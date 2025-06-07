@@ -8,6 +8,9 @@ import matplotlib
 # Use a headless backend so the bot can run without a display and in PyInstaller
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
+import threading
+import tkinter as tk
+from tkinter import scrolledtext
 
 logging.basicConfig(
     level=logging.INFO,
@@ -45,6 +48,85 @@ BUTTON_LIST = "Список групп"
 
 # Pending admin actions keyed by admin user_id
 pending_admin_actions: dict[int, str] = {}
+
+
+class TkLogHandler(logging.Handler):
+    """Logging handler that writes messages to a Tkinter Text widget."""
+
+    def __init__(self, widget: tk.Text):
+        super().__init__()
+        self.widget = widget
+        self.setFormatter(
+            logging.Formatter("%(asctime)s [%(levelname)s] %(message)s")
+        )
+
+    def emit(self, record: logging.LogRecord):
+        msg = self.format(record)
+
+        def append():
+            self.widget.configure(state="normal")
+            self.widget.insert(tk.END, msg + "\n")
+            self.widget.configure(state="disabled")
+            self.widget.yview(tk.END)
+
+        self.widget.after(0, append)
+
+
+def start_log_window() -> tk.Tk:
+    """Create a window that displays log messages and return it."""
+
+    window = tk.Tk()
+    window.title("Логи бота")
+    text = scrolledtext.ScrolledText(window, width=80, height=20, state="disabled")
+    text.pack(expand=True, fill="both")
+    handler = TkLogHandler(text)
+    logging.getLogger().addHandler(handler)
+    return window
+
+
+def configure_gui():
+    """Show a configuration window and save results to files."""
+    global TOKEN, ADMIN_IDS, INVITE_LINK, required_groups
+
+    root = tk.Tk()
+    root.title("Настройка бота")
+
+    tk.Label(root, text="Токен (пример: 123456789:ABCDEF)").grid(row=0, column=0, sticky="w")
+    ent_token = tk.Entry(root, width=50)
+    ent_token.insert(0, config.get("token", ""))
+    ent_token.grid(row=0, column=1)
+
+    tk.Label(root, text="ID админов через запятую (пример: 12345,67890)").grid(row=1, column=0, sticky="w")
+    ent_admins = tk.Entry(root, width=50)
+    ent_admins.insert(0, ",".join(str(i) for i in config.get("admin_ids", [])))
+    ent_admins.grid(row=1, column=1)
+
+    tk.Label(root, text="Ссылки на группы через запятую").grid(row=2, column=0, sticky="w")
+    ent_groups = tk.Entry(root, width=50)
+    ent_groups.insert(0, ",".join(load_groups()))
+    ent_groups.grid(row=2, column=1)
+
+    tk.Label(root, text="Эксклюзивная ссылка (пример: https://t.me/joinchat/xxxx)").grid(row=3, column=0, sticky="w")
+    ent_invite = tk.Entry(root, width=50)
+    ent_invite.insert(0, config.get("exclusive_link", ""))
+    ent_invite.grid(row=3, column=1)
+
+    def on_start():
+        nonlocal root
+        TOKEN = ent_token.get().strip()
+        ADMIN_IDS[:] = [int(i.strip()) for i in ent_admins.get().split(",") if i.strip()]
+        required_groups[:] = [g.strip() for g in ent_groups.get().split(",") if g.strip()]
+        INVITE_LINK = ent_invite.get().strip()
+
+        config["token"] = TOKEN
+        config["admin_ids"] = ADMIN_IDS
+        config["exclusive_link"] = INVITE_LINK
+        save_config(config)
+        save_groups(required_groups)
+        root.destroy()
+
+    tk.Button(root, text="Запустить", command=on_start).grid(row=4, column=0, columnspan=2, pady=5)
+    root.mainloop()
 
 
 def load_config() -> dict:
@@ -130,41 +212,21 @@ def record_exclusive_user(user_id: int):
 
 
 def configure():
-    """Load configuration from disk or ask the user for required data."""
+    """Load configuration from disk and open the GUI to edit it."""
     global TOKEN, API_URL, ADMIN_IDS, required_groups, INVITE_LINK
     global WELCOME_TEXT, BUTTON_VERIFY, BUTTON_EXCLUSIVE, BUTTON_LIST
 
     logging.info("Loading configuration")
-    TOKEN = config.get("token")
+    TOKEN = config.get("token", "")
     ADMIN_IDS[:] = config.get("admin_ids", [])
     INVITE_LINK = config.get("exclusive_link", "")
     WELCOME_TEXT = config.get("welcome_text", WELCOME_TEXT)
     BUTTON_VERIFY = config.get("button_verify", BUTTON_VERIFY)
     BUTTON_EXCLUSIVE = config.get("button_exclusive", BUTTON_EXCLUSIVE)
     BUTTON_LIST = config.get("button_list", BUTTON_LIST)
-
-    if not TOKEN:
-        TOKEN = input("Введите токен Telegram бота: ").strip()
-        config["token"] = TOKEN
-        logging.info("Token saved")
-
-    if not ADMIN_IDS:
-        ids = input("Введите ID администраторов через запятую: ").split(",")
-        ADMIN_IDS[:] = [int(i.strip()) for i in ids if i.strip()]
-        config["admin_ids"] = ADMIN_IDS
-        logging.info("Admin IDs saved")
-
     required_groups[:] = load_groups()
-    if not required_groups:
-        groups = input("Пригласительные ссылки на группы через запятую: ").split(",")
-        required_groups[:] = [g.strip() for g in groups if g.strip()]
-        save_groups(required_groups)
-        logging.info("Group links saved")
 
-    if not INVITE_LINK:
-        INVITE_LINK = input("Ссылка для эксклюзива: ").strip()
-        config["exclusive_link"] = INVITE_LINK
-        logging.info("Exclusive link saved")
+    configure_gui()
 
     save_config(config)
     API_URL = f"https://api.telegram.org/bot{TOKEN}/"
@@ -203,7 +265,7 @@ def call_api(method: str, params: dict | None = None) -> dict:
             logging.debug("API %s -> %s", method, result)
             return result
     except Exception as e:  # pragma: no cover - log API errors
-        logging.error("API call failed: %s", e)
+        logging.error("API call failed: %s. Проверьте токен и интернет.", e)
         return {}
 
 
@@ -273,7 +335,6 @@ def generate_stats_graph(path: str) -> bool:
     plt.tight_layout()
     plt.savefig(path)
     plt.close()
-    logging.info("User %s subscribed to all groups", user_id)
     return True
 
 
@@ -482,9 +543,8 @@ def handle_update(update: dict):
             send_message(chat_id, "Нет доступа")
 
 
-if __name__ == "__main__":
-    logging.info("Bot starting")
-    configure()
+def run_bot():
+    """Main loop for polling updates."""
     offset = None
     while True:
         updates = get_updates(offset)
@@ -493,5 +553,17 @@ if __name__ == "__main__":
             try:
                 handle_update(upd)
             except Exception as e:  # pragma: no cover - log the error
-                logging.exception("Error handling update: %s", e)
+                logging.exception(
+                    "Ошибка обработки обновления. Проверьте настройки и интернет-соединение: %s",
+                    e,
+                )
         time.sleep(1)
+
+
+if __name__ == "__main__":
+    logging.info("Bot starting")
+    configure()
+    log_window = start_log_window()
+    thread = threading.Thread(target=run_bot, daemon=True)
+    thread.start()
+    log_window.mainloop()

@@ -14,11 +14,12 @@ Users interact with the bot via inline buttons. After `/start` the bot
 ```bash
 python bot.py
 ```
-At first run the program will ask for:
-- the bot token
-- administrator IDs
-- invite links for the groups that users must join
-- the invite link to send after successful verification
+When starting, a graphical window will appear asking for the bot token,
+administrator IDs, links to the required groups and the invite link for
+exclusive access. Example values are shown in the fields. After pressing
+"Запустить" the bot starts and a separate log window displays all
+operations. If an error occurs it is described in the log window along
+with a suggestion for how to fix it.
 
 ## Building an executable
 
@@ -29,9 +30,9 @@ pip install pyinstaller
 pyinstaller --onefile bot.py
 ```
 
-The resulting `dist/bot.exe` will behave the same as running `python bot.py`.
-When started a console window will appear asking for configuration data on first
-run and showing log messages while the bot is running.
+The resulting `dist/bot.exe` behaves like running `python bot.py`. After
+launching, the configuration window is shown and then a separate log window
+displays all actions while the bot is running.
 
 The admin panel is opened with `/admin` and uses a custom keyboard. It lets
 administrators view/edit group links, change the welcome message and user button
