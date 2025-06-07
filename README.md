@@ -30,6 +30,8 @@ pyinstaller --onefile bot.py
 ```
 
 The resulting `dist/bot.exe` will behave the same as running `python bot.py`.
+When started a console window will appear asking for configuration data on first
+run and showing log messages while the bot is running.
 
 The admin panel is opened with `/admin` and uses a custom keyboard. It lets
 administrators view/edit group links, change the welcome message and user button

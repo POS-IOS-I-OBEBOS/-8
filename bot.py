@@ -1,4 +1,5 @@
 import json
+import logging
 import time
 import urllib.parse
 import urllib.request
@@ -7,6 +8,11 @@ import matplotlib
 # Use a headless backend so the bot can run without a display and in PyInstaller
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(message)s",
+)
 from pathlib import Path
 
 # These will be populated at startup by asking the user for input
@@ -128,6 +134,7 @@ def configure():
     global TOKEN, API_URL, ADMIN_IDS, required_groups, INVITE_LINK
     global WELCOME_TEXT, BUTTON_VERIFY, BUTTON_EXCLUSIVE, BUTTON_LIST
 
+    logging.info("Loading configuration")
     TOKEN = config.get("token")
     ADMIN_IDS[:] = config.get("admin_ids", [])
     INVITE_LINK = config.get("exclusive_link", "")
@@ -139,24 +146,29 @@ def configure():
     if not TOKEN:
         TOKEN = input("Введите токен Telegram бота: ").strip()
         config["token"] = TOKEN
+        logging.info("Token saved")
 
     if not ADMIN_IDS:
         ids = input("Введите ID администраторов через запятую: ").split(",")
         ADMIN_IDS[:] = [int(i.strip()) for i in ids if i.strip()]
         config["admin_ids"] = ADMIN_IDS
+        logging.info("Admin IDs saved")
 
     required_groups[:] = load_groups()
     if not required_groups:
         groups = input("Пригласительные ссылки на группы через запятую: ").split(",")
         required_groups[:] = [g.strip() for g in groups if g.strip()]
         save_groups(required_groups)
+        logging.info("Group links saved")
 
     if not INVITE_LINK:
         INVITE_LINK = input("Ссылка для эксклюзива: ").strip()
         config["exclusive_link"] = INVITE_LINK
+        logging.info("Exclusive link saved")
 
     save_config(config)
     API_URL = f"https://api.telegram.org/bot{TOKEN}/"
+    logging.info("Configuration complete")
 
 
 
@@ -185,8 +197,14 @@ ADMIN_KEYBOARD = {
 def call_api(method: str, params: dict | None = None) -> dict:
     data = urllib.parse.urlencode(params or {}).encode()
     req = urllib.request.Request(API_URL + method, data=data)
-    with urllib.request.urlopen(req) as response:
-        return json.load(response)
+    try:
+        with urllib.request.urlopen(req) as response:
+            result = json.load(response)
+            logging.debug("API %s -> %s", method, result)
+            return result
+    except Exception as e:  # pragma: no cover - log API errors
+        logging.error("API call failed: %s", e)
+        return {}
 
 
 def get_updates(offset: int | None = None) -> list[dict]:
@@ -201,6 +219,7 @@ def send_message(chat_id: int, text: str, reply_markup: dict | None = None):
     params = {"chat_id": chat_id, "text": text}
     if reply_markup:
         params["reply_markup"] = json.dumps(reply_markup)
+    logging.debug("Send message to %s: %s", chat_id, text)
     call_api("sendMessage", params)
 
 
@@ -229,6 +248,7 @@ def send_photo(chat_id: int, photo_path: str, caption: str | None = None):
     with open(photo_path, "rb") as f:
         body = "\r\n".join(lines).encode() + f.read() + f"\r\n--{boundary}--\r\n".encode()
     headers = {"Content-Type": f"multipart/form-data; boundary={boundary}"}
+    logging.debug("Send photo to %s: %s", chat_id, photo_path)
     req = urllib.request.Request(API_URL + "sendPhoto", data=body, headers=headers)
     urllib.request.urlopen(req).read()
 
@@ -244,6 +264,7 @@ def generate_stats_graph(path: str) -> bool:
         counts[day] = counts.get(day, 0) + 1
     if not counts:
         return False
+    logging.info("Generating statistics graph with %d points", len(counts))
     dates = sorted(counts)
     values = [counts[d] for d in dates]
     plt.figure()
@@ -252,17 +273,20 @@ def generate_stats_graph(path: str) -> bool:
     plt.tight_layout()
     plt.savefig(path)
     plt.close()
+    logging.info("User %s subscribed to all groups", user_id)
     return True
 
 
 def check_subscriptions(user_id: int) -> bool:
     """Return True if user is a member of all required groups."""
+    logging.info("Checking subscriptions for user %s", user_id)
     for link in required_groups:
         member = call_api(
             "getChatMember", {"chat_id": link, "user_id": user_id}
         )
         status = member.get("result", {}).get("status")
         if status in {"left", "kicked"} or status is None:
+            logging.info("User %s missing subscription to %s", user_id, link)
             return False
     return True
 
@@ -309,6 +333,8 @@ def handle_update(update: dict):
     user_id = message["from"]["id"]
     text = message.get("text", "")
 
+    logging.info("Message from %s: %s", user_id, text)
+
     record_user(message.get("from", {}))
 
     if is_admin(user_id) and user_id in pending_admin_actions:
@@ -318,11 +344,13 @@ def handle_update(update: dict):
             if payload and payload not in required_groups:
                 required_groups.append(payload)
                 save_groups(required_groups)
+            logging.info("Admin %s added group %s", user_id, payload)
             send_message(chat_id, "Группа добавлена")
         elif action == "remove":
             if payload in required_groups:
                 required_groups.remove(payload)
                 save_groups(required_groups)
+            logging.info("Admin %s removed group %s", user_id, payload)
             send_message(chat_id, "Группа удалена")
         elif action == "welcome":
             if payload:
@@ -330,6 +358,7 @@ def handle_update(update: dict):
                 WELCOME_TEXT = payload
                 config["welcome_text"] = WELCOME_TEXT
                 save_config(config)
+                logging.info("Admin %s updated welcome text", user_id)
                 send_message(chat_id, "Приветствие обновлено")
         elif action == "buttons":
             parts = [p.strip() for p in payload.split(",")]
@@ -340,12 +369,14 @@ def handle_update(update: dict):
                 config["button_verify"] = BUTTON_VERIFY
                 config["button_exclusive"] = BUTTON_EXCLUSIVE
                 save_config(config)
+                logging.info("Admin %s updated button labels", user_id)
                 send_message(chat_id, "Кнопки обновлены")
             else:
                 send_message(chat_id, "Неверный формат. Три названия через запятую")
         return
 
     if text.startswith("/start"):
+        logging.info("/start command from %s", user_id)
         group_buttons = [
             [{"text": f"Группа {i+1}", "url": link}]
             for i, link in enumerate(required_groups)
@@ -360,11 +391,13 @@ def handle_update(update: dict):
         }
         send_message(chat_id, WELCOME_TEXT, keyboard)
     elif text.startswith("/verify"):
+        logging.info("/verify command from %s", user_id)
         if check_subscriptions(user_id):
             send_message(chat_id, ACCESS_GRANTED_MSG)
         else:
             send_message(chat_id, ACCESS_DENIED_MSG)
     elif text.startswith("/listgroups"):
+        logging.info("/listgroups command from %s", user_id)
         if required_groups:
             keyboard = {
                 "inline_keyboard": [
@@ -376,12 +409,14 @@ def handle_update(update: dict):
         else:
             send_message(chat_id, "Список групп пуст")
     elif text.startswith("/exclusive"):
+        logging.info("/exclusive command from %s", user_id)
         if check_subscriptions(user_id):
             record_exclusive_user(user_id)
             send_message(chat_id, EXCLUSIVE_CONTENT.format(link=INVITE_LINK))
         else:
             send_message(chat_id, ACCESS_DENIED_MSG)
     elif text.startswith("/admin"):
+        logging.info("/admin command from %s", user_id)
         if is_admin(user_id):
             send_message(chat_id, "Панель администратора", ADMIN_KEYBOARD)
         else:
@@ -407,17 +442,20 @@ def handle_update(update: dict):
         pending_admin_actions[user_id] = "buttons"
         send_message(chat_id, "Названия кнопок через запятую: список, проверка, эксклюзив")
     elif is_admin(user_id) and text == "Подробная статистика":
+        logging.info("Generating detailed stats for admin %s", user_id)
         if generate_stats_graph("stats.jpg"):
             send_photo(chat_id, "stats.jpg")
         else:
             send_message(chat_id, "Нет данных")
     elif text.startswith("/groups"):
+        logging.info("/groups command from %s", user_id)
         if is_admin(user_id):
             groups_text = "\n".join(required_groups) or "нет"
             send_message(chat_id, f"Текущие группы:\n{groups_text}")
         else:
             send_message(chat_id, "Нет доступа")
     elif text.startswith("/addgroup"):
+        logging.info("/addgroup command from %s", user_id)
         if is_admin(user_id):
             try:
                 link = text.split(maxsplit=1)[1].strip()
@@ -430,6 +468,7 @@ def handle_update(update: dict):
         else:
             send_message(chat_id, "Нет доступа")
     elif text.startswith("/removegroup"):
+        logging.info("/removegroup command from %s", user_id)
         if is_admin(user_id):
             try:
                 link = text.split(maxsplit=1)[1].strip()
@@ -444,6 +483,7 @@ def handle_update(update: dict):
 
 
 if __name__ == "__main__":
+    logging.info("Bot starting")
     configure()
     offset = None
     while True:
@@ -453,5 +493,5 @@ if __name__ == "__main__":
             try:
                 handle_update(upd)
             except Exception as e:  # pragma: no cover - log the error
-                print("Error handling update", e)
+                logging.exception("Error handling update: %s", e)
         time.sleep(1)
