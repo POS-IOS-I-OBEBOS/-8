@@ -4,8 +4,12 @@ import urllib.parse
 import urllib.request
 from pathlib import Path
 
-TOKEN = "YOUR_TELEGRAM_BOT_TOKEN"
-API_URL = f"https://api.telegram.org/bot{TOKEN}/"
+# These will be populated at startup by asking the user for input
+TOKEN = None
+API_URL = None
+
+# Telegram user IDs that are allowed to edit groups.
+ADMIN_IDS: list[int] = []
 
 # List of group or channel IDs the user must be subscribed to by default
 REQUIRED_GROUPS = [
@@ -13,8 +17,8 @@ REQUIRED_GROUPS = [
     -1009876543210,
 ]
 
-# Telegram user IDs that are allowed to edit groups
-ADMIN_IDS = [123456789]
+# Telegram user IDs that are allowed to edit groups will be
+# populated at runtime from user input.
 
 # File where group IDs are stored so that admins can edit them
 GROUPS_FILE = Path("groups.json")
@@ -34,6 +38,18 @@ def load_groups() -> list[int]:
 
 def save_groups(groups: list[int]):
     GROUPS_FILE.write_text(json.dumps(groups))
+
+
+def configure():
+    """Ask the user for the bot token and admin IDs."""
+    global TOKEN, API_URL, ADMIN_IDS
+    if not TOKEN:
+        TOKEN = input("Введите токен Telegram бота: ").strip()
+    if not ADMIN_IDS:
+        ids = input(
+            "Введите ID администраторов через запятую: ").split(",")
+        ADMIN_IDS = [int(i.strip()) for i in ids if i.strip()]
+    API_URL = f"https://api.telegram.org/bot{TOKEN}/"
 
 
 required_groups = load_groups()
@@ -140,6 +156,7 @@ def handle_update(update: dict):
 
 
 if __name__ == "__main__":
+    configure()
     offset = None
     while True:
         updates = get_updates(offset)
