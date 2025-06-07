@@ -14,6 +14,9 @@ ADMIN_IDS: list[int] = []
 # List of group or channel IDs to check. Will be populated at runtime.
 required_groups: list[int] = []
 
+# Cache for group information {id: {title, link}}
+group_cache: dict[int, dict] = {}
+
 # Telegram user IDs that are allowed to edit groups will be
 # populated at runtime from user input.
 
@@ -94,15 +97,16 @@ def is_admin(user_id: int) -> bool:
     return user_id in ADMIN_IDS
 
 WELCOME_MSG = (
-    "Добро пожаловать! Подпишитесь на наши каналы и группы. "
-    "Используйте кнопки ниже, чтобы проверить подписку или получить доступ."
+    "\uD83D\uDC4B <b>Добро пожаловать!</b>\n"
+    "Подпишитесь на каналы ниже и затем нажмите <b>Проверить подписку</b>."
 )
-ACCESS_GRANTED_MSG = "Подписка подтверждена. Доступ открыт!"
+ACCESS_GRANTED_MSG = "\u2705 Подписка подтверждена. Доступ открыт!"
 ACCESS_DENIED_MSG = (
-    "Вы еще не подписались на все требуемые группы. Пожалуйста, проверьте "
-    "свои подписки и попробуйте снова."
+    "\u274C Вы ещё не подписались на все каналы. "
+    "Пожалуйста, подпишитесь и попробуйте снова."
 )
-EXCLUSIVE_CONTENT = "Эксклюзивная ссылка: {link}"
+EXCLUSIVE_CONTENT = "\uD83D\uDD17 <b>Ваша ссылка:</b> {link}"
+GROUP_LIST_MSG = "\uD83D\uDC47 Нажмите на название, чтобы перейти в группу:"
 
 ADMIN_KEYBOARD = {
     "inline_keyboard": [
@@ -130,11 +134,42 @@ def get_updates(offset: int | None = None) -> list[dict]:
     return resp.get("result", [])
 
 
-def send_message(chat_id: int, text: str, reply_markup: dict | None = None):
+def send_message(
+    chat_id: int,
+    text: str,
+    reply_markup: dict | None = None,
+    parse_mode: str | None = "HTML",
+):
     params = {"chat_id": chat_id, "text": text}
     if reply_markup:
         params["reply_markup"] = json.dumps(reply_markup)
+    if parse_mode:
+        params["parse_mode"] = parse_mode
     call_api("sendMessage", params)
+
+
+def get_group_info(group_id: int) -> tuple[str, str | None]:
+    """Return the title and join link for a group or channel."""
+    if group_id not in group_cache:
+        try:
+            info = call_api("getChat", {"chat_id": group_id}).get("result", {})
+        except Exception:
+            info = {}
+        title = info.get("title", str(group_id))
+        link = None
+        if info.get("username"):
+            link = f"https://t.me/{info['username']}"
+        elif info.get("invite_link"):
+            link = info["invite_link"]
+        else:
+            try:
+                res = call_api("exportChatInviteLink", {"chat_id": group_id})
+                link = res.get("result")
+            except Exception:
+                link = None
+        group_cache[group_id] = {"title": title, "link": link}
+    cached = group_cache[group_id]
+    return cached["title"], cached["link"]
 
 
 def check_subscriptions(user_id: int) -> bool:
@@ -155,8 +190,21 @@ def handle_callback_query(query: dict):
     chat_id = query["message"]["chat"]["id"]
 
     if data == "list_groups":
-        groups_text = "\n".join(map(str, required_groups)) or "нет"
-        send_message(chat_id, f"Необходимые группы:\n{groups_text}")
+        keyboard = {"inline_keyboard": []}
+        for gid in required_groups:
+            title, link = get_group_info(gid)
+            if link:
+                keyboard["inline_keyboard"].append([
+                    {"text": title, "url": link}
+                ])
+            else:
+                keyboard["inline_keyboard"].append([
+                    {"text": title, "callback_data": "noop"}
+                ])
+        send_message(chat_id, GROUP_LIST_MSG, keyboard)
+    elif data == "noop":
+        call_api("answerCallbackQuery", {"callback_query_id": query_id, "text": "Ссылка недоступна", "show_alert": False})
+        return
     elif data == "verify":
         if check_subscriptions(user_id):
             send_message(chat_id, ACCESS_GRANTED_MSG)
@@ -231,8 +279,18 @@ def handle_update(update: dict):
         else:
             send_message(chat_id, ACCESS_DENIED_MSG)
     elif text.startswith("/listgroups"):
-        groups_text = "\n".join(map(str, required_groups)) or "нет"
-        send_message(chat_id, f"Необходимые группы:\n{groups_text}")
+        keyboard = {"inline_keyboard": []}
+        for gid in required_groups:
+            title, link = get_group_info(gid)
+            if link:
+                keyboard["inline_keyboard"].append([
+                    {"text": title, "url": link}
+                ])
+            else:
+                keyboard["inline_keyboard"].append([
+                    {"text": title, "callback_data": "noop"}
+                ])
+        send_message(chat_id, GROUP_LIST_MSG, keyboard)
     elif text.startswith("/exclusive"):
         if check_subscriptions(user_id):
             send_message(chat_id, EXCLUSIVE_CONTENT.format(link=INVITE_LINK))

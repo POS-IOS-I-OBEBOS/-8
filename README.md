@@ -2,9 +2,9 @@
 
 This bot checks whether users are subscribed to a set of Telegram channels before granting them access to an invite link. On launch it asks for the bot token, admin IDs, the channel IDs to check and the invite link for exclusive access.
 
-Users interact with the bot via inline buttons. After `/start` they can:
+Users interact with the bot via inline buttons with a clean design. After `/start` they can:
 
-- Request the list of required channels
+- Open a clickable list of the required channels
 - Verify their subscriptions
 - Receive the invite link once all subscriptions are confirmed
 
