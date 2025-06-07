@@ -60,14 +60,15 @@ def is_admin(user_id: int) -> bool:
     return user_id in ADMIN_IDS
 
 WELCOME_MSG = (
-    "Добро пожаловать! Подпишитесь на все наши каналы и группы, затем "
-    "отправьте команду /verify для проверки подписки."
+    "Добро пожаловать! Подпишитесь на наши каналы и группы. "
+    "Используйте кнопки ниже, чтобы проверить подписку или получить доступ."
 )
 ACCESS_GRANTED_MSG = "Подписка подтверждена. Доступ открыт!"
 ACCESS_DENIED_MSG = (
     "Вы еще не подписались на все требуемые группы. Пожалуйста, проверьте "
     "свои подписки и попробуйте снова."
 )
+EXCLUSIVE_CONTENT = "Секретная информация только для подписчиков"
 
 
 def call_api(method: str, params: dict | None = None) -> dict:
@@ -85,8 +86,11 @@ def get_updates(offset: int | None = None) -> list[dict]:
     return resp.get("result", [])
 
 
-def send_message(chat_id: int, text: str):
-    call_api("sendMessage", {"chat_id": chat_id, "text": text})
+def send_message(chat_id: int, text: str, reply_markup: dict | None = None):
+    params = {"chat_id": chat_id, "text": text}
+    if reply_markup:
+        params["reply_markup"] = json.dumps(reply_markup)
+    call_api("sendMessage", params)
 
 
 def check_subscriptions(user_id: int) -> bool:
@@ -100,7 +104,32 @@ def check_subscriptions(user_id: int) -> bool:
     return True
 
 
+def handle_callback_query(query: dict):
+    query_id = query["id"]
+    data = query.get("data")
+    user_id = query["from"]["id"]
+    chat_id = query["message"]["chat"]["id"]
+
+    if data == "list_groups":
+        groups_text = "\n".join(map(str, required_groups)) or "нет"
+        send_message(chat_id, f"Необходимые группы:\n{groups_text}")
+    elif data == "verify":
+        if check_subscriptions(user_id):
+            send_message(chat_id, ACCESS_GRANTED_MSG)
+        else:
+            send_message(chat_id, ACCESS_DENIED_MSG)
+    elif data == "exclusive":
+        if check_subscriptions(user_id):
+            send_message(chat_id, EXCLUSIVE_CONTENT)
+        else:
+            send_message(chat_id, ACCESS_DENIED_MSG)
+    call_api("answerCallbackQuery", {"callback_query_id": query_id})
+
+
 def handle_update(update: dict):
+    if "callback_query" in update:
+        handle_callback_query(update["callback_query"])
+        return
     message = update.get("message")
     if not message:
         return
@@ -109,10 +138,25 @@ def handle_update(update: dict):
     text = message.get("text", "")
 
     if text.startswith("/start"):
-        send_message(chat_id, WELCOME_MSG)
+        keyboard = {
+            "inline_keyboard": [
+                [{"text": "Список групп", "callback_data": "list_groups"}],
+                [{"text": "Проверить подписку", "callback_data": "verify"}],
+                [{"text": "Эксклюзив", "callback_data": "exclusive"}],
+            ]
+        }
+        send_message(chat_id, WELCOME_MSG, keyboard)
     elif text.startswith("/verify"):
         if check_subscriptions(user_id):
             send_message(chat_id, ACCESS_GRANTED_MSG)
+        else:
+            send_message(chat_id, ACCESS_DENIED_MSG)
+    elif text.startswith("/listgroups"):
+        groups_text = "\n".join(map(str, required_groups)) or "нет"
+        send_message(chat_id, f"Необходимые группы:\n{groups_text}")
+    elif text.startswith("/exclusive"):
+        if check_subscriptions(user_id):
+            send_message(chat_id, EXCLUSIVE_CONTENT)
         else:
             send_message(chat_id, ACCESS_DENIED_MSG)
     elif text.startswith("/admin"):

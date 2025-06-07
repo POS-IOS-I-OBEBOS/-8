@@ -2,6 +2,12 @@
 
 This bot checks user subscriptions to specified Telegram groups and provides a small admin panel to manage those groups. When started it will ask for the bot token and a list of administrator user IDs.
 
+Users interact with the bot via inline buttons. After `/start` they can:
+
+- Request the list of required groups
+- Verify their subscriptions
+- Get exclusive content once all subscriptions are confirmed
+
 ## Running
 
 ```bash
