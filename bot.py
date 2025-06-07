@@ -4,6 +4,11 @@ import time
 import urllib.parse
 import urllib.request
 import matplotlib
+try:
+    import psutil
+    PSUTIL_AVAILABLE = True
+except Exception:  # pragma: no cover - optional dependency
+    PSUTIL_AVAILABLE = False
 
 # Use a headless backend so the bot can run without a display and in PyInstaller
 matplotlib.use("Agg")
@@ -79,10 +84,45 @@ def start_log_window() -> tk.Tk:
 
     window = tk.Tk()
     window.title("Логи бота")
+    frame = tk.Frame(window)
+    frame.pack(fill="x")
+
+    cpu_label = tk.Label(frame, text="CPU")
+    cpu_label.grid(row=0, column=0, sticky="w")
+    cpu_canvas = tk.Canvas(frame, width=200, height=20)
+    cpu_canvas.grid(row=0, column=1, padx=5)
+
+    mem_label = tk.Label(frame, text="RAM")
+    mem_label.grid(row=1, column=0, sticky="w")
+    mem_canvas = tk.Canvas(frame, width=200, height=20)
+    mem_canvas.grid(row=1, column=1, padx=5, pady=(0, 5))
+
     text = scrolledtext.ScrolledText(window, width=80, height=20, state="disabled")
     text.pack(expand=True, fill="both")
     handler = TkLogHandler(text)
     logging.getLogger().addHandler(handler)
+
+    def color_from_percent(p: float) -> str:
+        r = int(255 * p / 100)
+        g = int(255 * (1 - p / 100))
+        return f"#{r:02x}{g:02x}00"
+
+    def update_usage():
+        if PSUTIL_AVAILABLE:
+            cpu = psutil.cpu_percent(interval=None)
+            mem = psutil.virtual_memory().percent
+
+            for canvas, value in ((cpu_canvas, cpu), (mem_canvas, mem)):
+                canvas.delete("all")
+                width = int(canvas["width"])
+                color = color_from_percent(value)
+                canvas.create_rectangle(0, 0, width, 20, fill="white")
+                canvas.create_rectangle(0, 0, width * value / 100, 20, fill=color)
+                canvas.create_text(width / 2, 10, text=f"{value:.0f}%")
+
+        window.after(1000, update_usage)
+
+    update_usage()
     return window
 
 

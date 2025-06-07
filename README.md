@@ -18,8 +18,10 @@ When starting, a graphical window will appear asking for the bot token,
 administrator IDs, links to the required groups and the invite link for
 exclusive access. Example values are shown in the fields. After pressing
 "Запустить" the bot starts and a separate log window displays all
-operations. If an error occurs it is described in the log window along
-with a suggestion for how to fix it.
+operations. The log window also shows real-time graphs for CPU and
+memory usage: bars fill from green to red as load increases. If an error
+occurs it is described in the log window along with a suggestion for how
+to fix it.
 
 ## Building an executable
 
