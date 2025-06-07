@@ -2,6 +2,10 @@ import json
 import time
 import urllib.parse
 import urllib.request
+import matplotlib
+
+# Use a headless backend so the bot can run without a display and in PyInstaller
+matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from pathlib import Path
 
