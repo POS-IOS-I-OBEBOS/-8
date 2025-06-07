@@ -42,16 +42,20 @@ required_groups: list[dict] = []
 CONFIG_FILE = Path("config.json")
 GROUPS_FILE = Path("groups.json")
 USERS_FILE = Path("users.json")
-EXCLUSIVE_USERS_FILE = Path("exclusive_users.json")
-
-# Invite link provided at startup for exclusive access
-INVITE_LINK = ""
+AUTHORIZED_USERS_FILE = Path("authorized_users.json")
 
 # Texts shown to users (loaded from config and editable by admin)
 WELCOME_TEXT = "Добро пожаловать! Подпишитесь на наши группы. Используйте кнопки ниже."
 BUTTON_VERIFY = "Проверить подписку"
-BUTTON_EXCLUSIVE = "Эксклюзив"
-BUTTON_LIST = "Список групп"
+BUTTON_APPLY = "Оставить заявку"
+BUTTON_SALAM = "Кинуть салам)))"
+
+SECOND_MENU = {
+    "inline_keyboard": [
+        [{"text": BUTTON_APPLY, "callback_data": "apply"}],
+        [{"text": BUTTON_SALAM, "callback_data": "salam"}],
+    ]
+}
 
 # Pending admin actions keyed by admin user_id
 pending_admin_actions: dict[int, str] = {}
@@ -128,7 +132,7 @@ def start_log_window() -> tk.Tk:
 
 def configure_gui():
     """Show a configuration window and save results to files."""
-    global TOKEN, ADMIN_IDS, INVITE_LINK, required_groups
+    global TOKEN, ADMIN_IDS, required_groups
 
     root = tk.Tk()
     root.title("Настройка бота")
@@ -153,11 +157,6 @@ def configure_gui():
     ent_group_links.insert(0, ",".join(g.get("link", "") for g in load_groups()))
     ent_group_links.grid(row=3, column=1)
 
-    tk.Label(root, text="Эксклюзивная ссылка (пример: https://t.me/joinchat/xxxx)").grid(row=4, column=0, sticky="w")
-    ent_invite = tk.Entry(root, width=50)
-    ent_invite.insert(0, config.get("exclusive_link", ""))
-    ent_invite.grid(row=4, column=1)
-
     def on_start():
         nonlocal root
         TOKEN = ent_token.get().strip()
@@ -168,16 +167,13 @@ def configure_gui():
             {"id": ids[i], "link": links[i] if i < len(links) else ""}
             for i in range(len(ids))
         ]
-        INVITE_LINK = ent_invite.get().strip()
-
         config["token"] = TOKEN
         config["admin_ids"] = ADMIN_IDS
-        config["exclusive_link"] = INVITE_LINK
         save_config(config)
         save_groups(required_groups)
         root.destroy()
 
-    tk.Button(root, text="Запустить", command=on_start).grid(row=5, column=0, columnspan=2, pady=5)
+    tk.Button(root, text="Запустить", command=on_start).grid(row=4, column=0, columnspan=2, pady=5)
     root.mainloop()
 
 
@@ -233,24 +229,24 @@ def save_users(users: dict):
     USERS_FILE.write_text(json.dumps(users))
 
 
-def load_exclusive_users() -> list[int]:
-    if EXCLUSIVE_USERS_FILE.exists():
+def load_authorized_users() -> list[int]:
+    if AUTHORIZED_USERS_FILE.exists():
         try:
-            with EXCLUSIVE_USERS_FILE.open() as fh:
+            with AUTHORIZED_USERS_FILE.open() as fh:
                 return json.load(fh)
         except json.JSONDecodeError:
             return []
     return []
 
 
-def save_exclusive_users(data: list[int]):
-    EXCLUSIVE_USERS_FILE.write_text(json.dumps(data))
+def save_authorized_users(data: list[int]):
+    AUTHORIZED_USERS_FILE.write_text(json.dumps(data))
 
 
 config = load_config()
 
 users = load_users()
-exclusive_users = load_exclusive_users()
+authorized_users = load_authorized_users()
 
 
 def record_user(user: dict):
@@ -265,25 +261,22 @@ def record_user(user: dict):
         save_users(users)
 
 
-def record_exclusive_user(user_id: int):
-    if user_id not in exclusive_users:
-        exclusive_users.append(user_id)
-        save_exclusive_users(exclusive_users)
+def record_authorized_user(user_id: int):
+    if user_id not in authorized_users:
+        authorized_users.append(user_id)
+        save_authorized_users(authorized_users)
 
 
 def configure():
     """Load configuration from disk and open the GUI to edit it."""
-    global TOKEN, API_URL, ADMIN_IDS, required_groups, INVITE_LINK
-    global WELCOME_TEXT, BUTTON_VERIFY, BUTTON_EXCLUSIVE, BUTTON_LIST
+    global TOKEN, API_URL, ADMIN_IDS, required_groups
+    global WELCOME_TEXT, BUTTON_VERIFY
 
     logging.info("Loading configuration")
     TOKEN = config.get("token", "")
     ADMIN_IDS[:] = config.get("admin_ids", [])
-    INVITE_LINK = config.get("exclusive_link", "")
     WELCOME_TEXT = config.get("welcome_text", WELCOME_TEXT)
     BUTTON_VERIFY = config.get("button_verify", BUTTON_VERIFY)
-    BUTTON_EXCLUSIVE = config.get("button_exclusive", BUTTON_EXCLUSIVE)
-    BUTTON_LIST = config.get("button_list", BUTTON_LIST)
     required_groups[:] = load_groups()
 
     configure_gui()
@@ -304,12 +297,11 @@ ACCESS_DENIED_MSG = (
     "Вы еще не подписались на все требуемые группы. Пожалуйста, проверьте "
     "свои подписки и попробуйте снова."
 )
-EXCLUSIVE_CONTENT = "Эксклюзивная ссылка: {link}"
 
 ADMIN_KEYBOARD = {
     "keyboard": [
         ["Список групп", "Добавить группу", "Удалить группу"],
-        ["Изменить приветствие", "Изменить кнопки"],
+        ["Изменить приветствие"],
         ["Статистика", "Подробная статистика", "Пользователи"],
     ],
     "resize_keyboard": True,
@@ -420,28 +412,16 @@ def handle_callback_query(query: dict):
     user_id = query["from"]["id"]
     chat_id = query["message"]["chat"]["id"]
 
-    if data == "list_groups":
-        if required_groups:
-            keyboard = {
-                "inline_keyboard": [
-                    [{"text": f"Группа {i+1}", "url": grp.get("link") or str(grp.get("id"))}]
-                    for i, grp in enumerate(required_groups)
-                ]
-            }
-            send_message(chat_id, "Необходимые группы:", keyboard)
-        else:
-            send_message(chat_id, "Список групп пуст")
-    elif data == "verify":
+    if data == "verify":
         if check_subscriptions(user_id):
-            send_message(chat_id, ACCESS_GRANTED_MSG)
+            record_authorized_user(user_id)
+            send_message(chat_id, ACCESS_GRANTED_MSG, SECOND_MENU)
         else:
             send_message(chat_id, ACCESS_DENIED_MSG)
-    elif data == "exclusive":
-        if check_subscriptions(user_id):
-            record_exclusive_user(user_id)
-            send_message(chat_id, EXCLUSIVE_CONTENT.format(link=INVITE_LINK))
-        else:
-            send_message(chat_id, ACCESS_DENIED_MSG)
+    elif data == "apply":
+        send_message(chat_id, "Заявка отправлена")
+    elif data == "salam":
+        send_message(chat_id, "Салам алейкум!")
     call_api("answerCallbackQuery", {"callback_query_id": query_id})
 
 
@@ -488,59 +468,27 @@ def handle_update(update: dict):
                 save_config(config)
                 logging.info("Admin %s updated welcome text", user_id)
                 send_message(chat_id, "Приветствие обновлено")
-        elif action == "buttons":
-            parts = [p.strip() for p in payload.split(",")]
-            if len(parts) == 3:
-                global BUTTON_LIST, BUTTON_VERIFY, BUTTON_EXCLUSIVE
-                BUTTON_LIST, BUTTON_VERIFY, BUTTON_EXCLUSIVE = parts
-                config["button_list"] = BUTTON_LIST
-                config["button_verify"] = BUTTON_VERIFY
-                config["button_exclusive"] = BUTTON_EXCLUSIVE
-                save_config(config)
-                logging.info("Admin %s updated button labels", user_id)
-                send_message(chat_id, "Кнопки обновлены")
-            else:
-                send_message(chat_id, "Неверный формат. Три названия через запятую")
         return
 
     if text.startswith("/start"):
         logging.info("/start command from %s", user_id)
+        if user_id in authorized_users:
+            send_message(chat_id, ACCESS_GRANTED_MSG, SECOND_MENU)
+            return
         group_buttons = [
             [{"text": f"Группа {i+1}", "url": grp.get("link") or str(grp.get("id"))}]
             for i, grp in enumerate(required_groups)
         ]
         keyboard = {
             "inline_keyboard": group_buttons
-            + [
-                [{"text": BUTTON_LIST, "callback_data": "list_groups"}],
-                [{"text": BUTTON_VERIFY, "callback_data": "verify"}],
-                [{"text": BUTTON_EXCLUSIVE, "callback_data": "exclusive"}],
-            ]
+            + [[{"text": BUTTON_VERIFY, "callback_data": "verify"}]]
         }
         send_message(chat_id, WELCOME_TEXT, keyboard)
     elif text.startswith("/verify"):
         logging.info("/verify command from %s", user_id)
         if check_subscriptions(user_id):
-            send_message(chat_id, ACCESS_GRANTED_MSG)
-        else:
-            send_message(chat_id, ACCESS_DENIED_MSG)
-    elif text.startswith("/listgroups"):
-        logging.info("/listgroups command from %s", user_id)
-        if required_groups:
-            keyboard = {
-                "inline_keyboard": [
-                    [{"text": f"Группа {i+1}", "url": grp.get("link") or str(grp.get("id"))}]
-                    for i, grp in enumerate(required_groups)
-                ]
-            }
-            send_message(chat_id, "Необходимые группы:", keyboard)
-        else:
-            send_message(chat_id, "Список групп пуст")
-    elif text.startswith("/exclusive"):
-        logging.info("/exclusive command from %s", user_id)
-        if check_subscriptions(user_id):
-            record_exclusive_user(user_id)
-            send_message(chat_id, EXCLUSIVE_CONTENT.format(link=INVITE_LINK))
+            record_authorized_user(user_id)
+            send_message(chat_id, ACCESS_GRANTED_MSG, SECOND_MENU)
         else:
             send_message(chat_id, ACCESS_DENIED_MSG)
     elif text.startswith("/admin"):
@@ -566,9 +514,6 @@ def handle_update(update: dict):
     elif is_admin(user_id) and text == "Изменить приветствие":
         pending_admin_actions[user_id] = "welcome"
         send_message(chat_id, "Отправьте новый приветственный текст")
-    elif is_admin(user_id) and text == "Изменить кнопки":
-        pending_admin_actions[user_id] = "buttons"
-        send_message(chat_id, "Названия кнопок через запятую: список, проверка, эксклюзив")
     elif is_admin(user_id) and text == "Подробная статистика":
         logging.info("Generating detailed stats for admin %s", user_id)
         if generate_stats_graph("stats.jpg"):
