@@ -11,8 +11,8 @@ API_URL = None
 # Telegram user IDs that are allowed to edit groups.
 ADMIN_IDS: list[int] = []
 
-# List of group invite links to check. Will be populated at runtime.
-required_groups: list[str] = []
+# List of groups to check. Each item is a dict with keys "id" and "link".
+required_groups: list[dict] = []
 
 # Telegram user IDs that are allowed to edit groups will be
 # populated at runtime from user input.
@@ -44,18 +44,27 @@ def save_config(cfg: dict):
     CONFIG_FILE.write_text(json.dumps(cfg))
 
 
-def load_groups() -> list[str]:
-    """Load required group invite links from disk."""
+def load_groups() -> list[dict]:
+    """Load required groups from disk."""
     if GROUPS_FILE.exists():
         try:
             with GROUPS_FILE.open() as fh:
-                return json.load(fh)
+                data = json.load(fh)
+                if isinstance(data, list):
+                    # Support legacy format where items were simple strings
+                    result = []
+                    for item in data:
+                        if isinstance(item, dict):
+                            result.append({"id": item.get("id", ""), "link": item.get("link", "")})
+                        else:
+                            result.append({"id": str(item), "link": str(item)})
+                    return result
         except json.JSONDecodeError:
             return []
     return []
 
 
-def save_groups(groups: list[str]):
+def save_groups(groups: list[dict]):
     GROUPS_FILE.write_text(json.dumps(groups))
 
 
@@ -111,6 +120,13 @@ def record_exclusive_user(user_id: int):
         save_exclusive_users(exclusive_users)
 
 
+def _api_request(token: str, method: str, params: dict | None = None) -> dict:
+    data = urllib.parse.urlencode(params or {}).encode()
+    url = f"https://api.telegram.org/bot{token}/{method}"
+    with urllib.request.urlopen(url, data=data) as response:
+        return json.load(response)
+
+
 def configure():
     """Load configuration from disk or ask the user for required data."""
     global TOKEN, API_URL, ADMIN_IDS, required_groups, INVITE_LINK
@@ -119,27 +135,62 @@ def configure():
     ADMIN_IDS[:] = config.get("admin_ids", [])
     INVITE_LINK = config.get("exclusive_link", "")
 
-    if not TOKEN:
-        TOKEN = input("Введите токен Telegram бота: ").strip()
-        config["token"] = TOKEN
+    while True:
+        if not TOKEN:
+            TOKEN = input(
+                "Введите токен Telegram бота (например 123456:ABCDEF): "
+            ).strip()
+        try:
+            _api_request(TOKEN, "getMe")
+            config["token"] = TOKEN
+            break
+        except Exception:
+            print("Неверный токен, попробуйте еще раз")
+            TOKEN = None
 
-    if not ADMIN_IDS:
+    API_URL = f"https://api.telegram.org/bot{TOKEN}/"
+
+    while not ADMIN_IDS:
         ids = input("Введите ID администраторов через запятую: ").split(",")
-        ADMIN_IDS[:] = [int(i.strip()) for i in ids if i.strip()]
+        try:
+            ADMIN_IDS[:] = [int(i.strip()) for i in ids if i.strip()]
+        except ValueError:
+            print("Некорректные ID, попробуйте снова")
+            ADMIN_IDS.clear()
         config["admin_ids"] = ADMIN_IDS
 
     required_groups[:] = load_groups()
-    if not required_groups:
-        groups = input("Пригласительные ссылки на группы через запятую: ").split(",")
-        required_groups[:] = [g.strip() for g in groups if g.strip()]
+
+    def valid_group(gid: str) -> bool:
+        try:
+            _api_request(TOKEN, "getChat", {"chat_id": gid})
+            return True
+        except Exception:
+            return False
+
+    if not required_groups or not all(valid_group(g["id"]) for g in required_groups):
+        required_groups.clear()
+        ids = input(
+            "ID каналов через запятую (например -1001234567890,@channel): "
+        ).split(",")
+        ids = [i.strip() for i in ids if i.strip()]
+        for gid in ids:
+            while not valid_group(gid):
+                gid = input(f"ID {gid} неверен, введите еще раз: ").strip()
+            link = input(
+                f"Пригласительная ссылка для {gid} (например https://t.me/joinchat/...): "
+            ).strip()
+            required_groups.append({"id": gid, "link": link})
         save_groups(required_groups)
 
-    if not INVITE_LINK:
-        INVITE_LINK = input("Ссылка для эксклюзива: ").strip()
-        config["exclusive_link"] = INVITE_LINK
+    while not INVITE_LINK:
+        INVITE_LINK = input(
+            "Ссылка для эксклюзива (например https://t.me/joinchat/...): "
+        ).strip()
+        if INVITE_LINK:
+            config["exclusive_link"] = INVITE_LINK
 
     save_config(config)
-    API_URL = f"https://api.telegram.org/bot{TOKEN}/"
 
 
 
@@ -169,6 +220,14 @@ ADMIN_KEYBOARD = {
     ]
 }
 
+USER_KEYBOARD = {
+    "inline_keyboard": [
+        [{"text": "\ud83d\udcdc Список групп", "callback_data": "list_groups"}],
+        [{"text": "\u2705 Проверить подписку", "callback_data": "verify"}],
+        [{"text": "\ud83d\udd12 Эксклюзив", "callback_data": "exclusive"}],
+    ]
+}
+
 
 def call_api(method: str, params: dict | None = None) -> dict:
     data = urllib.parse.urlencode(params or {}).encode()
@@ -194,12 +253,16 @@ def send_message(chat_id: int, text: str, reply_markup: dict | None = None):
 
 def check_subscriptions(user_id: int) -> bool:
     """Return True if user is a member of all required groups."""
-    for link in required_groups:
-        member = call_api(
-            "getChatMember", {"chat_id": link, "user_id": user_id}
-        )
-        status = member.get("result", {}).get("status")
-        if status in {"left", "kicked"} or status is None:
+    for grp in required_groups:
+        try:
+            member = call_api(
+                "getChatMember", {"chat_id": grp["id"], "user_id": user_id}
+            )
+            status = member.get("result", {}).get("status")
+            if status in {"left", "kicked", None}:
+                return False
+        except Exception as e:
+            print("Check failed for", grp["id"], e)
             return False
     return True
 
@@ -214,8 +277,8 @@ def handle_callback_query(query: dict):
         if required_groups:
             keyboard = {
                 "inline_keyboard": [
-                    [{"text": f"Группа {i+1}", "url": link}]
-                    for i, link in enumerate(required_groups)
+                    [{"text": f"\ud83d\udc65 Группа {i+1}", "url": g["link"] or ""}]
+                    for i, g in enumerate(required_groups)
                 ]
             }
             send_message(chat_id, "Необходимые группы:", keyboard)
@@ -233,7 +296,7 @@ def handle_callback_query(query: dict):
         else:
             send_message(chat_id, ACCESS_DENIED_MSG)
     elif data == "admin_list" and is_admin(user_id):
-        groups_text = "\n".join(required_groups) or "нет"
+        groups_text = "\n".join(f"{g['id']} -> {g['link']}" for g in required_groups) or "нет"
         send_message(chat_id, f"Текущие группы:\n{groups_text}")
     elif data == "admin_add" and is_admin(user_id):
         pending_admin_actions[user_id] = "add"
@@ -264,35 +327,29 @@ def handle_update(update: dict):
 
     if is_admin(user_id) and user_id in pending_admin_actions:
         action = pending_admin_actions.pop(user_id)
-        link = text.strip()
-        if not link:
-            send_message(chat_id, "Неверная ссылка")
+        text = text.strip()
+        if not text:
+            send_message(chat_id, "Неверные данные")
             return
         if action == "add":
-            if link not in required_groups:
-                required_groups.append(link)
-                save_groups(required_groups)
+            parts = text.split(maxsplit=1)
+            gid = parts[0]
+            glink = parts[1] if len(parts) > 1 else ""
+            required_groups.append({"id": gid, "link": glink})
+            save_groups(required_groups)
             send_message(chat_id, "Группа добавлена")
         else:
-            if link in required_groups:
-                required_groups.remove(link)
-                save_groups(required_groups)
+            gid = text
+            for grp in list(required_groups):
+                if grp["id"] == gid:
+                    required_groups.remove(grp)
+                    save_groups(required_groups)
+                    break
             send_message(chat_id, "Группа удалена")
         return
 
     if text.startswith("/start"):
-        group_buttons = [
-            [{"text": f"Группа {i+1}", "url": link}]
-            for i, link in enumerate(required_groups)
-        ]
-        keyboard = {
-            "inline_keyboard": group_buttons
-            + [
-                [{"text": "Проверить подписку", "callback_data": "verify"}],
-                [{"text": "Эксклюзив", "callback_data": "exclusive"}],
-            ]
-        }
-        send_message(chat_id, WELCOME_MSG, keyboard)
+        send_message(chat_id, WELCOME_MSG, USER_KEYBOARD)
     elif text.startswith("/verify"):
         if check_subscriptions(user_id):
             send_message(chat_id, ACCESS_GRANTED_MSG)
@@ -302,8 +359,8 @@ def handle_update(update: dict):
         if required_groups:
             keyboard = {
                 "inline_keyboard": [
-                    [{"text": f"Группа {i+1}", "url": link}]
-                    for i, link in enumerate(required_groups)
+                    [{"text": f"\ud83d\udc65 Группа {i+1}", "url": g["link"] or ""}]
+                    for i, g in enumerate(required_groups)
                 ]
             }
             send_message(chat_id, "Необходимые группы:", keyboard)
@@ -322,32 +379,35 @@ def handle_update(update: dict):
             send_message(chat_id, "Нет доступа")
     elif text.startswith("/groups"):
         if is_admin(user_id):
-            groups_text = "\n".join(required_groups) or "нет"
+            groups_text = "\n".join(f"{g['id']} -> {g['link']}" for g in required_groups) or "нет"
             send_message(chat_id, f"Текущие группы:\n{groups_text}")
         else:
             send_message(chat_id, "Нет доступа")
     elif text.startswith("/addgroup"):
         if is_admin(user_id):
             try:
-                link = text.split(maxsplit=1)[1].strip()
-                if link and link not in required_groups:
-                    required_groups.append(link)
-                    save_groups(required_groups)
+                parts = text.split(maxsplit=2)
+                gid = parts[1]
+                glink = parts[2] if len(parts) > 2 else ""
+                required_groups.append({"id": gid, "link": glink})
+                save_groups(required_groups)
                 send_message(chat_id, "Группа добавлена")
             except IndexError:
-                send_message(chat_id, "Использование: /addgroup <link>")
+                send_message(chat_id, "Использование: /addgroup <id> [link]")
         else:
             send_message(chat_id, "Нет доступа")
     elif text.startswith("/removegroup"):
         if is_admin(user_id):
             try:
-                link = text.split(maxsplit=1)[1].strip()
-                if link in required_groups:
-                    required_groups.remove(link)
-                    save_groups(required_groups)
+                gid = text.split(maxsplit=1)[1].strip()
+                for grp in list(required_groups):
+                    if grp["id"] == gid:
+                        required_groups.remove(grp)
+                        save_groups(required_groups)
+                        break
                 send_message(chat_id, "Группа удалена")
             except IndexError:
-                send_message(chat_id, "Использование: /removegroup <link>")
+                send_message(chat_id, "Использование: /removegroup <id>")
         else:
             send_message(chat_id, "Нет доступа")
 
