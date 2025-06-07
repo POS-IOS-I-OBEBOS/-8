@@ -11,48 +11,82 @@ API_URL = None
 # Telegram user IDs that are allowed to edit groups.
 ADMIN_IDS: list[int] = []
 
-# List of group or channel IDs the user must be subscribed to by default
-REQUIRED_GROUPS = [
-    -1001234567890,  # replace with your group IDs
-    -1009876543210,
-]
+# List of group or channel IDs to check. Will be populated at runtime.
+required_groups: list[int] = []
 
 # Telegram user IDs that are allowed to edit groups will be
 # populated at runtime from user input.
 
-# File where group IDs are stored so that admins can edit them
+# Files for persistent data
 GROUPS_FILE = Path("groups.json")
+USERS_FILE = Path("users.json")
+
+# Invite link provided at startup for exclusive access
+INVITE_LINK = ""
+
+# Pending admin actions keyed by admin user_id
+pending_admin_actions: dict[int, str] = {}
 
 
 def load_groups() -> list[int]:
-    """Load required groups from disk or create the file with defaults."""
+    """Load required groups from disk."""
     if GROUPS_FILE.exists():
         try:
             with GROUPS_FILE.open() as fh:
                 return json.load(fh)
         except json.JSONDecodeError:
-            pass
-    GROUPS_FILE.write_text(json.dumps(REQUIRED_GROUPS))
-    return REQUIRED_GROUPS
+            return []
+    return []
 
 
 def save_groups(groups: list[int]):
     GROUPS_FILE.write_text(json.dumps(groups))
 
 
+def load_users() -> dict:
+    """Load saved user info."""
+    if USERS_FILE.exists():
+        try:
+            with USERS_FILE.open() as fh:
+                return json.load(fh)
+        except json.JSONDecodeError:
+            return {}
+    return {}
+
+
+def save_users(users: dict):
+    USERS_FILE.write_text(json.dumps(users))
+
+
+users = load_users()
+
+
+def record_user(user: dict):
+    uid = str(user.get("id"))
+    if uid not in users:
+        users[uid] = {
+            "username": user.get("username"),
+            "first_name": user.get("first_name"),
+            "last_name": user.get("last_name"),
+        }
+        save_users(users)
+
+
 def configure():
-    """Ask the user for the bot token and admin IDs."""
-    global TOKEN, API_URL, ADMIN_IDS
+    """Ask the user for the bot token, admins, groups and invite link."""
+    global TOKEN, API_URL, ADMIN_IDS, required_groups, INVITE_LINK
     if not TOKEN:
         TOKEN = input("Введите токен Telegram бота: ").strip()
     if not ADMIN_IDS:
-        ids = input(
-            "Введите ID администраторов через запятую: ").split(",")
+        ids = input("Введите ID администраторов через запятую: ").split(",")
         ADMIN_IDS = [int(i.strip()) for i in ids if i.strip()]
+    groups = input("Введите ID каналов через запятую: ").split(",")
+    required_groups = [int(g.strip()) for g in groups if g.strip()]
+    save_groups(required_groups)
+    INVITE_LINK = input("Ссылка для эксклюзива: ").strip()
     API_URL = f"https://api.telegram.org/bot{TOKEN}/"
 
 
-required_groups = load_groups()
 
 
 def is_admin(user_id: int) -> bool:
@@ -68,7 +102,17 @@ ACCESS_DENIED_MSG = (
     "Вы еще не подписались на все требуемые группы. Пожалуйста, проверьте "
     "свои подписки и попробуйте снова."
 )
-EXCLUSIVE_CONTENT = "Секретная информация только для подписчиков"
+EXCLUSIVE_CONTENT = "Эксклюзивная ссылка: {link}"
+
+ADMIN_KEYBOARD = {
+    "inline_keyboard": [
+        [{"text": "Список каналов", "callback_data": "admin_list"}],
+        [{"text": "Добавить канал", "callback_data": "admin_add"}],
+        [{"text": "Удалить канал", "callback_data": "admin_remove"}],
+        [{"text": "Статистика", "callback_data": "admin_stats"}],
+        [{"text": "Пользователи", "callback_data": "admin_users"}],
+    ]
+}
 
 
 def call_api(method: str, params: dict | None = None) -> dict:
@@ -120,9 +164,23 @@ def handle_callback_query(query: dict):
             send_message(chat_id, ACCESS_DENIED_MSG)
     elif data == "exclusive":
         if check_subscriptions(user_id):
-            send_message(chat_id, EXCLUSIVE_CONTENT)
+            send_message(chat_id, EXCLUSIVE_CONTENT.format(link=INVITE_LINK))
         else:
             send_message(chat_id, ACCESS_DENIED_MSG)
+    elif data == "admin_list" and is_admin(user_id):
+        groups_text = "\n".join(map(str, required_groups)) or "нет"
+        send_message(chat_id, f"Текущие группы:\n{groups_text}")
+    elif data == "admin_add" and is_admin(user_id):
+        pending_admin_actions[user_id] = "add"
+        send_message(chat_id, "Отправьте ID канала для добавления")
+    elif data == "admin_remove" and is_admin(user_id):
+        pending_admin_actions[user_id] = "remove"
+        send_message(chat_id, "Отправьте ID канала для удаления")
+    elif data == "admin_stats" and is_admin(user_id):
+        send_message(chat_id, f"Пользователей: {len(users)}")
+    elif data == "admin_users" and is_admin(user_id):
+        info = [f"{uid} - {u.get('username') or u.get('first_name')}" for uid, u in users.items()]
+        send_message(chat_id, "\n".join(info) or "Нет данных")
     call_api("answerCallbackQuery", {"callback_query_id": query_id})
 
 
@@ -136,6 +194,27 @@ def handle_update(update: dict):
     chat_id = message["chat"]["id"]
     user_id = message["from"]["id"]
     text = message.get("text", "")
+
+    record_user(message.get("from", {}))
+
+    if is_admin(user_id) and user_id in pending_admin_actions:
+        action = pending_admin_actions.pop(user_id)
+        try:
+            group_id = int(text)
+        except ValueError:
+            send_message(chat_id, "Неверный ID")
+            return
+        if action == "add":
+            if group_id not in required_groups:
+                required_groups.append(group_id)
+                save_groups(required_groups)
+            send_message(chat_id, "Группа добавлена")
+        else:
+            if group_id in required_groups:
+                required_groups.remove(group_id)
+                save_groups(required_groups)
+            send_message(chat_id, "Группа удалена")
+        return
 
     if text.startswith("/start"):
         keyboard = {
@@ -156,15 +235,12 @@ def handle_update(update: dict):
         send_message(chat_id, f"Необходимые группы:\n{groups_text}")
     elif text.startswith("/exclusive"):
         if check_subscriptions(user_id):
-            send_message(chat_id, EXCLUSIVE_CONTENT)
+            send_message(chat_id, EXCLUSIVE_CONTENT.format(link=INVITE_LINK))
         else:
             send_message(chat_id, ACCESS_DENIED_MSG)
     elif text.startswith("/admin"):
         if is_admin(user_id):
-            send_message(
-                chat_id,
-                "Команды: /groups, /addgroup <id>, /removegroup <id>",
-            )
+            send_message(chat_id, "Панель администратора", ADMIN_KEYBOARD)
         else:
             send_message(chat_id, "Нет доступа")
     elif text.startswith("/groups"):
