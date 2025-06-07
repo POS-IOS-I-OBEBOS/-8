@@ -326,6 +326,7 @@ def send_photo(chat_id: int, photo_path: str, caption: str | None = None):
         'Content-Disposition: form-data; name="photo"; filename="stats.jpg"',
         'Content-Type: image/jpeg',
         "",
+        "",  # blank line separates headers from file data
     ])
     with open(photo_path, "rb") as f:
         body = "\r\n".join(lines).encode() + f.read() + f"\r\n--{boundary}--\r\n".encode()
