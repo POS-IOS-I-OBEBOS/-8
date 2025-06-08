@@ -6,6 +6,7 @@ import urllib.request
 import ssl
 import re
 import matplotlib
+from pathlib import Path
 try:
     import psutil
     PSUTIL_AVAILABLE = True
@@ -24,8 +25,14 @@ logging.basicConfig(
     format="%(asctime)s [%(levelname)s] %(message)s",
 )
 
+FSRAR_LOG = Path("fsrar.log")
+fsrar_logger = logging.getLogger("fsrar")
+fsrar_logger.setLevel(logging.INFO)
+_fh = logging.FileHandler(FSRAR_LOG, encoding="utf-8")
+_fh.setFormatter(logging.Formatter("%(asctime)s [%(levelname)s] %(message)s"))
+fsrar_logger.addHandler(_fh)
+
 UNVERIFIED_CONTEXT = ssl._create_unverified_context()
-from pathlib import Path
 
 # These will be populated at startup by asking the user for input
 TOKEN = None
@@ -405,6 +412,7 @@ def fetch_captcha() -> tuple[bytes, dict] | None:
     url = "https://check1.fsrar.ru/?AspxAutoDetectCookieSupport=1"
     try:
         logging.info("Fetching captcha page: %s", url)
+        fsrar_logger.info("Fetching captcha page: %s", url)
         req = urllib.request.Request(url)
         with urllib.request.urlopen(req, context=UNVERIFIED_CONTEXT) as resp:
             cookies = resp.headers.get_all("Set-Cookie") or []
@@ -414,12 +422,14 @@ def fetch_captcha() -> tuple[bytes, dict] | None:
             return None
         cap_url = urllib.parse.urljoin(url, match.group(1))
         logging.info("Fetching captcha image: %s", cap_url)
+        fsrar_logger.info("Fetching captcha image: %s", cap_url)
         req2 = urllib.request.Request(cap_url, headers={"Cookie": "; ".join(cookies)})
         with urllib.request.urlopen(req2, context=UNVERIFIED_CONTEXT) as resp2:
             image = resp2.read()
         return image, {"Cookie": "; ".join(cookies)}, html
     except Exception as exc:  # pragma: no cover - network errors
         logging.error("Failed to fetch captcha: %s", exc)
+        fsrar_logger.error("Failed to fetch captcha: %s", exc)
         return None
 
 
@@ -511,11 +521,14 @@ def submit_invoice(tnn: str, fsrar: str, captcha: str, headers: dict, html: str)
         }
         req_headers.update(headers)
         logging.info("Invoice request to %s: %s", url, form)
+        fsrar_logger.info("Invoice request to %s: %s", url, form)
         req = urllib.request.Request(url, data=data_encoded, headers=req_headers)
         with urllib.request.urlopen(req, context=UNVERIFIED_CONTEXT) as resp:
             page = resp.read().decode("utf-8", "ignore")
         logging.info("FSRAR response length: %d", len(page))
+        fsrar_logger.info("FSRAR response length: %d", len(page))
         logging.debug("FSRAR response snippet: %s", page[:200])
+        fsrar_logger.debug("FSRAR response snippet: %s", page[:200])
 
         pairs = re.findall(
             r"<td[^>]*>(.*?)</td>\s*<td[^>]*>(.*?)</td>", page, re.I | re.S
@@ -529,19 +542,20 @@ def submit_invoice(tnn: str, fsrar: str, captcha: str, headers: dict, html: str)
                 val = re.sub(r"\s+", " ", val).strip()
                 lines.append(f"{lbl}: {val}")
             return "\n".join(lines)
-
+        parts = []
         date = extract_field(page, "изменения")
+        if date:
+            parts.append(f"Дата и время последнего изменения: {date}")
         status = extract_field(page, "Статус")
+        if status:
+            parts.append(f"Статус: {status}")
         owner = extract_field(page, "Кому принадлежит")
-        return "\n".join(
-            [
-                f"Дата и время последнего изменения: {date or 'н/д'}",
-                f"Статус: {status or 'н/д'}",
-                f"Кому принадлежит: {owner or 'н/д'}",
-            ]
-        )
+        if owner:
+            parts.append(f"Кому принадлежит: {owner}")
+        return "\n".join(parts) if parts else "Нет данных"
     except Exception as exc:  # pragma: no cover - network errors
         logging.error("Failed to submit invoice: %s", exc)
+        fsrar_logger.error("Failed to submit invoice: %s", exc)
         return None
 
 
