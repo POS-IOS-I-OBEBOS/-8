@@ -4,6 +4,9 @@ import requests
 from bs4 import BeautifulSoup
 import urllib.parse
 import re
+from tkinter import Tk, Label, Entry, Button
+from PIL import Image, ImageTk
+import io
 
 requests.packages.urllib3.disable_warnings()
 
@@ -91,15 +94,47 @@ def fetch_captcha(session: requests.Session):
     return captcha_id, instance_id, captcha_url
 
 
+def get_captcha_input(session: requests.Session, url: str) -> str:
+    """Show captcha in a window and return user input."""
+    logger.info("Открытие окна для ввода капчи")
+    root = Tk()
+    root.title("Введите капчу")
+    try:
+        resp = session.get(url, verify=False)
+    except Exception:
+        logger.exception("Не удалось загрузить изображение капчи")
+        root.destroy()
+        raise
+    img = Image.open(io.BytesIO(resp.content))
+    photo = ImageTk.PhotoImage(img)
+    label = Label(root, image=photo)
+    label.image = photo
+    label.pack(padx=10, pady=10)
+
+    entry = Entry(root)
+    entry.pack(padx=10, pady=5)
+    entry.focus_set()
+
+    code_holder = {}
+
+    def submit():
+        code_holder['code'] = entry.get().strip()
+        root.destroy()
+
+    Button(root, text="Отправить", command=submit).pack(padx=10, pady=5)
+    root.mainloop()
+    user_code = code_holder.get('code', '')
+    logger.info("Введена капча: %s", user_code)
+    return user_code
+
+
 def check_document(ttn: str, receiver: str):
     logger.info("Проверка документа. ТТН=%s, ФСРАР=%s", ttn, receiver)
     session = requests.Session()
     captcha_id, instance_id, captcha_url = fetch_captcha(session)
 
-    print("Откройте изображение капчи по ссылке:", captcha_url)
     logger.info("URL капчи: %s", captcha_url)
-    user_input = input("Введите капчу: ").strip()
-    logger.info("Введена капча: %s", user_input)
+    user_input = get_captcha_input(session, captcha_url)
 
     payload = {
         "id": ttn,
