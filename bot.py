@@ -463,7 +463,7 @@ def find_captcha_input(html: str) -> str:
     for inp in re.findall(r"<input[^>]+>", html, re.I):
         if "captcha" not in inp.lower():
             continue
-        if "type\="hidden"" in inp.lower():
+        if 'type="hidden"' in inp.lower():
             continue
         m = re.search(r'name="([^"]+)"', inp, re.I)
         if m:
