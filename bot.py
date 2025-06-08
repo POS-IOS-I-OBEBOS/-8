@@ -154,8 +154,6 @@ def start_log_window() -> tk.Tk:
         if not tnn:
             messagebox.showerror("Ошибка", "Укажите номер ТТН")
             return
-        if not tnn.upper().startswith("TTN-"):
-            tnn = "TTN-" + tnn
         fsrar = ent_fsrar.get().strip()
         if not fsrar:
             messagebox.showerror("Ошибка", "Укажите FSRAR ID")
@@ -761,10 +759,7 @@ def handle_update(update: dict):
         session = invoice_sessions[user_id]
         stage = session.get("stage")
         if stage == "tnn":
-            tnn = text.strip()
-            if not tnn.upper().startswith("TTN-"):
-                tnn = "TTN-" + tnn
-            session["tnn"] = tnn
+            session["tnn"] = text.strip()
             session["stage"] = "fsrar"
             send_message(chat_id, "Введите FSRAR ID получателя (например, 030000000000)")
         elif stage == "fsrar":
