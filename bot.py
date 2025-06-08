@@ -416,7 +416,8 @@ def fetch_captcha() -> tuple[bytes, dict] | None:
         req = urllib.request.Request(url)
         with urllib.request.urlopen(req, context=UNVERIFIED_CONTEXT) as resp:
             cookies = resp.headers.get_all("Set-Cookie") or []
-            html = resp.read().decode("utf-8", "ignore")
+            enc = resp.headers.get_content_charset() or "cp1251"
+            html = resp.read().decode(enc, "ignore")
         match = re.search(r'<img[^>]+src="([^"]*captcha[^\"]*)"', html, re.I)
         if not match:
             return None
@@ -537,7 +538,8 @@ def submit_invoice(tnn: str, fsrar: str, captcha: str, headers: dict, html: str)
         fsrar_logger.info("Invoice request to %s: %s", url, form)
         req = urllib.request.Request(url, data=data_encoded, headers=req_headers)
         with urllib.request.urlopen(req, context=UNVERIFIED_CONTEXT) as resp:
-            page = resp.read().decode("utf-8", "ignore")
+            enc = resp.headers.get_content_charset() or "cp1251"
+            page = resp.read().decode(enc, "ignore")
         logging.info("FSRAR response length: %d", len(page))
         fsrar_logger.info("FSRAR response length: %d", len(page))
         logging.debug("FSRAR response snippet: %s", page[:200])

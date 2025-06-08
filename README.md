@@ -45,5 +45,7 @@ label and value found on the page is sent back in a separate line so users see
 all information provided by the site. Certificate verification is disabled when
 contacting this site to avoid SSL errors. The invoice submission automatically
 detects the actual form field names and search mode on the site, ensuring the
-query succeeds even if these names change. The bot writes all request and
-response details to `fsrar.log` so invoice problems can be diagnosed.
+query succeeds even if these names change. Pages are decoded using the
+`windows-1251` encoding reported by the server, so Russian text is parsed
+correctly. The bot writes all request and response details to `fsrar.log` so
+invoice problems can be diagnosed.
