@@ -45,4 +45,5 @@ label and value found on the page is sent back in a separate line so users see
 all information provided by the site. Certificate verification is disabled when
 contacting this site to avoid SSL errors. The invoice submission automatically
 detects the actual form field names and search mode on the site, ensuring the
-query succeeds even if these names change.
+query succeeds even if these names change. The bot logs the full request
+parameters and the HTML response so issues with invoice checks can be debugged.

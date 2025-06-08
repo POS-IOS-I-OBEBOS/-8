@@ -404,6 +404,7 @@ def fetch_captcha() -> tuple[bytes, dict] | None:
     """Retrieve captcha image and session cookies from FSRAR site."""
     url = "https://check1.fsrar.ru/?AspxAutoDetectCookieSupport=1"
     try:
+        logging.info("Fetching captcha page: %s", url)
         req = urllib.request.Request(url)
         with urllib.request.urlopen(req, context=UNVERIFIED_CONTEXT) as resp:
             cookies = resp.headers.get_all("Set-Cookie") or []
@@ -412,6 +413,7 @@ def fetch_captcha() -> tuple[bytes, dict] | None:
         if not match:
             return None
         cap_url = urllib.parse.urljoin(url, match.group(1))
+        logging.info("Fetching captcha image: %s", cap_url)
         req2 = urllib.request.Request(cap_url, headers={"Cookie": "; ".join(cookies)})
         with urllib.request.urlopen(req2, context=UNVERIFIED_CONTEXT) as resp2:
             image = resp2.read()
@@ -503,11 +505,17 @@ def submit_invoice(tnn: str, fsrar: str, captcha: str, headers: dict, html: str)
         if viewgen:
             form["__VIEWSTATEGENERATOR"] = viewgen.group(1)
         data_encoded = urllib.parse.urlencode(form).encode()
-        req_headers = {"User-Agent": "Mozilla/5.0", "Content-Type": "application/x-www-form-urlencoded"}
+        req_headers = {
+            "User-Agent": "Mozilla/5.0",
+            "Content-Type": "application/x-www-form-urlencoded",
+        }
         req_headers.update(headers)
+        logging.info("Invoice request to %s: %s", url, form)
         req = urllib.request.Request(url, data=data_encoded, headers=req_headers)
         with urllib.request.urlopen(req, context=UNVERIFIED_CONTEXT) as resp:
             page = resp.read().decode("utf-8", "ignore")
+        logging.info("FSRAR response length: %d", len(page))
+        logging.debug("FSRAR response snippet: %s", page[:200])
 
         pairs = re.findall(
             r"<td[^>]*>(.*?)</td>\s*<td[^>]*>(.*?)</td>", page, re.I | re.S
