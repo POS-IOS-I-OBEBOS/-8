@@ -33,7 +33,12 @@ displays all actions while the bot is running.
 The admin panel is opened with `/admin` and uses a custom keyboard. It lets
 administrators view or edit channel links, change the welcome message,
 see basic statistics and request a visit chart in JPG format. Authorised
-users also have access to the **Проверка накладной** button which asks for
-a TNN number and FSRAR ID, shows a captcha from https://check1.fsrar.ru and
-returns the latest status information for that invoice. Certificate
-verification is disabled when contacting this site to avoid SSL errors.
+users also have access to the **Проверка накладной** button.
+
+When pressed, the bot first asks for the TNN number (for example `123456789`),
+then requests the recipient's FSRAR ID (for example `030000000000`). After the
+user enters these values the bot shows a captcha from
+<https://check1.fsrar.ru>. Once the captcha text is sent, the bot waits for the
+FSRAR service to respond and returns the date of the last change, the current
+status and the owner of the invoice. Certificate verification is disabled when
+contacting this site to avoid SSL errors.

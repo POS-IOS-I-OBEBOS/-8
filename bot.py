@@ -487,8 +487,8 @@ def handle_callback_query(query: dict):
     elif data == "salam":
         send_message(chat_id, "Салам алейкум!")
     elif data == "invoice":
-        invoice_sessions[user_id] = {"stage": "details"}
-        send_message(chat_id, "Введите номер ТТН и FSRAR ID получателя через пробел")
+        invoice_sessions[user_id] = {"stage": "tnn"}
+        send_message(chat_id, "Введите номер ТТН (например, 123456789)")
     call_api("answerCallbackQuery", {"callback_query_id": query_id})
 
 
@@ -539,12 +539,13 @@ def handle_update(update: dict):
 
     if user_id in invoice_sessions:
         session = invoice_sessions[user_id]
-        if session.get("stage") == "details":
-            parts = text.split()
-            if len(parts) != 2:
-                send_message(chat_id, "Введите данные в формате: <TNN> <FSRAR>")
-                return
-            session["tnn"], session["fsrar"] = parts
+        stage = session.get("stage")
+        if stage == "tnn":
+            session["tnn"] = text.strip()
+            session["stage"] = "fsrar"
+            send_message(chat_id, "Введите FSRAR ID получателя (например, 030000000000)")
+        elif stage == "fsrar":
+            session["fsrar"] = text.strip()
             cap = fetch_captcha()
             if cap:
                 image, headers, html = cap
@@ -555,7 +556,7 @@ def handle_update(update: dict):
             else:
                 send_message(chat_id, "Не удалось получить капчу")
                 invoice_sessions.pop(user_id, None)
-        elif session.get("stage") == "captcha":
+        elif stage == "captcha":
             result = submit_invoice(
                 session.get("tnn", ""),
                 session.get("fsrar", ""),
