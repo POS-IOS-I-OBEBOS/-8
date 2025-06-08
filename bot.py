@@ -458,6 +458,19 @@ def find_field_name(html: str, part: str, default: str) -> str:
     return m.group(1) if m else default
 
 
+def find_captcha_input(html: str) -> str:
+    """Return the visible captcha input field name."""
+    for inp in re.findall(r"<input[^>]+>", html, re.I):
+        if "captcha" not in inp.lower():
+            continue
+        if "type\="hidden"" in inp.lower():
+            continue
+        m = re.search(r'name="([^"]+)"', inp, re.I)
+        if m:
+            return m.group(1)
+    return find_field_name(html, "CaptchaCode", "CaptchaCode")
+
+
 def parse_form(html: str) -> dict:
     """Return a dict of form field names and values (inputs and selects)."""
     data: dict[str, str] = {}
@@ -496,7 +509,7 @@ def submit_invoice(tnn: str, fsrar: str, captcha: str, headers: dict, html: str)
 
         reg_field = find_field_name(html, "RegId", "RegId")
         fsrar_field = find_field_name(html, "ClientId", "ClientId")
-        cap_field = find_field_name(html, "Captcha", "Captcha")
+        cap_field = find_captcha_input(html)
         btn_field = find_field_name(html, "btn", "btnSend")
         search_field = find_field_name(html, "Search", "")
 
