@@ -49,16 +49,21 @@ WELCOME_TEXT = "Добро пожаловать! Подпишитесь на н�
 BUTTON_VERIFY = "Проверить подписку"
 BUTTON_APPLY = "Оставить заявку"
 BUTTON_SALAM = "Кинуть салам)))"
+BUTTON_INVOICE = "Проверка накладной"
 
 SECOND_MENU = {
     "inline_keyboard": [
         [{"text": BUTTON_APPLY, "callback_data": "apply"}],
         [{"text": BUTTON_SALAM, "callback_data": "salam"}],
+        [{"text": BUTTON_INVOICE, "callback_data": "invoice"}],
     ]
 }
 
 # Pending admin actions keyed by admin user_id
 pending_admin_actions: dict[int, str] = {}
+
+# Pending invoice checks keyed by user_id
+invoice_sessions: dict[int, dict] = {}
 
 
 class TkLogHandler(logging.Handler):
@@ -391,6 +396,61 @@ def generate_stats_graph(path: str) -> bool:
     return True
 
 
+def fetch_captcha() -> tuple[bytes, dict] | None:
+    """Retrieve captcha image and session cookies from FSRAR site."""
+    url = "https://check1.fsrar.ru/?AspxAutoDetectCookieSupport=1"
+    try:
+        req = urllib.request.Request(url)
+        with urllib.request.urlopen(req) as resp:
+            cookies = resp.headers.get_all("Set-Cookie") or []
+            html = resp.read().decode("utf-8", "ignore")
+        match = re.search(r'<img[^>]+src="([^"]*captcha[^\"]*)"', html, re.I)
+        if not match:
+            return None
+        cap_url = urllib.parse.urljoin(url, match.group(1))
+        req2 = urllib.request.Request(cap_url, headers={"Cookie": "; ".join(cookies)})
+        with urllib.request.urlopen(req2) as resp2:
+            image = resp2.read()
+        return image, {"Cookie": "; ".join(cookies)}, html
+    except Exception as exc:  # pragma: no cover - network errors
+        logging.error("Failed to fetch captcha: %s", exc)
+        return None
+
+
+def submit_invoice(tnn: str, fsrar: str, captcha: str, headers: dict, html: str) -> str | None:
+    """Submit invoice data and parse result from FSRAR site."""
+    url = "https://check1.fsrar.ru/?AspxAutoDetectCookieSupport=1"
+    try:
+        viewstate = re.search(r'name="__VIEWSTATE" value="([^"]+)"', html)
+        eventvalidation = re.search(r'name="__EVENTVALIDATION" value="([^"]+)"', html)
+        data = {
+            "RegId": tnn,
+            "ClientId": fsrar,
+            "Captcha": captcha,
+        }
+        if viewstate:
+            data["__VIEWSTATE"] = viewstate.group(1)
+        if eventvalidation:
+            data["__EVENTVALIDATION"] = eventvalidation.group(1)
+        data_encoded = urllib.parse.urlencode(data).encode()
+        req = urllib.request.Request(url, data=data_encoded, headers=headers)
+        with urllib.request.urlopen(req) as resp:
+            page = resp.read().decode("utf-8", "ignore")
+        date = re.search(r"Последнего изменения</td>\s*<td[^>]*>([^<]+)", page)
+        status = re.search(r"Статус</td>\s*<td[^>]*>([^<]+)", page)
+        owner = re.search(r"Кому принадлежит</td>\s*<td[^>]*>([^<]+)", page)
+        return "\n".join(
+            [
+                f"Дата и время последнего изменения: {date.group(1) if date else 'н/д'}",
+                f"Статус: {status.group(1) if status else 'н/д'}",
+                f"Кому принадлежит: {owner.group(1) if owner else 'н/д'}",
+            ]
+        )
+    except Exception as exc:  # pragma: no cover - network errors
+        logging.error("Failed to submit invoice: %s", exc)
+        return None
+
+
 def check_subscriptions(user_id: int) -> bool:
     """Return True if user is a member of all required groups."""
     logging.info("Checking subscriptions for user %s", user_id)
@@ -422,6 +482,9 @@ def handle_callback_query(query: dict):
         send_message(chat_id, "Заявка отправлена")
     elif data == "salam":
         send_message(chat_id, "Салам алейкум!")
+    elif data == "invoice":
+        invoice_sessions[user_id] = {"stage": "details"}
+        send_message(chat_id, "Введите номер ТТН и FSRAR ID получателя через пробел")
     call_api("answerCallbackQuery", {"callback_query_id": query_id})
 
 
@@ -468,6 +531,39 @@ def handle_update(update: dict):
                 save_config(config)
                 logging.info("Admin %s updated welcome text", user_id)
                 send_message(chat_id, "Приветствие обновлено")
+        return
+
+    if user_id in invoice_sessions:
+        session = invoice_sessions[user_id]
+        if session.get("stage") == "details":
+            parts = text.split()
+            if len(parts) != 2:
+                send_message(chat_id, "Введите данные в формате: <TNN> <FSRAR>")
+                return
+            session["tnn"], session["fsrar"] = parts
+            cap = fetch_captcha()
+            if cap:
+                image, headers, html = cap
+                session.update({"stage": "captcha", "headers": headers, "html": html})
+                with open("captcha.jpg", "wb") as fh:
+                    fh.write(image)
+                send_photo(chat_id, "captcha.jpg", "Введите капчу")
+            else:
+                send_message(chat_id, "Не удалось получить капчу")
+                invoice_sessions.pop(user_id, None)
+        elif session.get("stage") == "captcha":
+            result = submit_invoice(
+                session.get("tnn", ""),
+                session.get("fsrar", ""),
+                text.strip(),
+                session.get("headers", {}),
+                session.get("html", ""),
+            )
+            if result:
+                send_message(chat_id, result)
+            else:
+                send_message(chat_id, "Ошибка при проверке накладной")
+            invoice_sessions.pop(user_id, None)
         return
 
     if text.startswith("/start"):

@@ -2,7 +2,7 @@
 
 This bot verifies that users are subscribed to the specified Telegram channels before granting them access to the second menu. On the first launch it asks for the bot token, administrator IDs and the IDs and invite links of the required channels. These settings are saved to `config.json` so subsequent runs do not prompt again.
 
-Users interact with the bot via inline buttons. After `/start` the bot sends buttons linking to the required channels along with a single **Проверить подписку** button. If the user is subscribed to all channels they receive an authorised status and a new menu with buttons **Оставить заявку** and **Кинуть салам)))**.
+Users interact with the bot via inline buttons. After `/start` the bot sends buttons linking to the required channels along with a single **Проверить подписку** button. If the user is subscribed to all channels they receive an authorised status and a new menu with buttons **Оставить заявку**, **Кинуть салам)))** и **Проверка накладной**.
 
 ## Running
 
@@ -32,4 +32,7 @@ displays all actions while the bot is running.
 
 The admin panel is opened with `/admin` and uses a custom keyboard. It lets
 administrators view or edit channel links, change the welcome message,
-see basic statistics and request a visit chart in JPG format.
+see basic statistics and request a visit chart in JPG format. Authorised
+users also have access to the **Проверка накладной** button which asks for
+a TNN number and FSRAR ID, shows a captcha from https://check1.fsrar.ru and
+returns the latest status information for that invoice.
