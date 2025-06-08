@@ -423,11 +423,20 @@ def fetch_captcha() -> tuple[bytes, dict] | None:
 
 def extract_field(page: str, label: str) -> str | None:
     """Return table cell value that follows the given label."""
-    pattern = rf"{label}.*?</td>\s*<td[^>]*>(.*?)</td>"
-    m = re.search(pattern, page, re.I | re.S)
+    pattern = re.compile(
+        rf"<td[^>]*>\s*{re.escape(label)}\s*</td>\s*<td[^>]*>(.*?)</td>",
+        re.I | re.S,
+    )
+    m = pattern.search(page)
     if m:
         return re.sub(r"\s+", " ", m.group(1)).strip()
     return None
+
+
+def find_field_name(html: str, part: str, default: str) -> str:
+    """Find the first input name containing the given part."""
+    m = re.search(rf'name="([^"]*{re.escape(part)}[^"]*)"', html, re.I)
+    return m.group(1) if m else default
 
 
 def submit_invoice(tnn: str, fsrar: str, captcha: str, headers: dict, html: str) -> str | None:
@@ -437,11 +446,17 @@ def submit_invoice(tnn: str, fsrar: str, captcha: str, headers: dict, html: str)
         viewstate = re.search(r'name="__VIEWSTATE" value="([^"]+)"', html)
         eventvalidation = re.search(r'name="__EVENTVALIDATION" value="([^"]+)"', html)
         viewgen = re.search(r'name="__VIEWSTATEGENERATOR" value="([^"]+)"', html)
+
+        reg_field = find_field_name(html, "RegId", "RegId")
+        fsrar_field = find_field_name(html, "ClientId", "ClientId")
+        cap_field = find_field_name(html, "Captcha", "Captcha")
+        btn_field = find_field_name(html, "btn", "btnSend")
+
         data = {
-            "RegId": tnn,
-            "ClientId": fsrar,
-            "Captcha": captcha,
-            "btnSend": ""  # name of the submit button may be required
+            reg_field: tnn,
+            fsrar_field: fsrar,
+            cap_field: captcha,
+            btn_field: "",
         }
         if viewstate:
             data["__VIEWSTATE"] = viewstate.group(1)

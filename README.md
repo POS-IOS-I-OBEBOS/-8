@@ -41,6 +41,6 @@ user enters these values the bot shows a captcha from
 <https://check1.fsrar.ru>. Once the captcha text is sent, the bot waits for the
 FSRAR service to respond and returns the date of the last change, the current
 status and the owner of the invoice. Certificate verification is disabled when
-contacting this site to avoid SSL errors.
-The response parsing has been improved so these fields correctly appear unless
-the site returns no data.
+contacting this site to avoid SSL errors. The invoice submission automatically
+detects the actual form field names on the site to fill in the TNN and FSRAR ID
+so that results should appear correctly unless the site returns no data.
