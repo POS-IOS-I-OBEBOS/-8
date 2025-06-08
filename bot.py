@@ -508,6 +508,20 @@ def submit_invoice(tnn: str, fsrar: str, captcha: str, headers: dict, html: str)
         req = urllib.request.Request(url, data=data_encoded, headers=req_headers)
         with urllib.request.urlopen(req, context=UNVERIFIED_CONTEXT) as resp:
             page = resp.read().decode("utf-8", "ignore")
+
+        pairs = re.findall(
+            r"<td[^>]*>(.*?)</td>\s*<td[^>]*>(.*?)</td>", page, re.I | re.S
+        )
+        if pairs:
+            lines = []
+            for lbl, val in pairs:
+                lbl = re.sub(r"<[^>]+>", "", lbl)
+                val = re.sub(r"<[^>]+>", "", val)
+                lbl = re.sub(r"\s+", " ", lbl).strip()
+                val = re.sub(r"\s+", " ", val).strip()
+                lines.append(f"{lbl}: {val}")
+            return "\n".join(lines)
+
         date = extract_field(page, "изменения")
         status = extract_field(page, "Статус")
         owner = extract_field(page, "Кому принадлежит")
