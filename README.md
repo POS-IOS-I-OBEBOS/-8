@@ -36,14 +36,15 @@ see basic statistics and request a visit chart in JPG format. Authorised
 users also have access to the **Проверка накладной** button.
 
 When pressed, the bot first asks for the TNN number (for example `123456789`),
-then requests the recipient's FSRAR ID (for example `030000000000`). After the
+which is automatically prefixed with `TTN-`. It then requests the recipient's
+FSRAR ID (for example `030000000000`). After the
 user enters these values the bot shows a captcha from
 <https://check1.fsrar.ru>. Once the captcha text is sent, the bot waits for the
 FSRAR service to respond and returns the date of the last change, the current
 status and the owner of the invoice. Certificate verification is disabled when
 contacting this site to avoid SSL errors. The invoice submission automatically
-detects the actual form field names on the site to fill in the TNN and FSRAR ID
-so that results should appear correctly unless the site returns no data. The
-response parser has been improved to include all hidden form parameters and
-more flexibly extract the date, status and owner values, so these fields should
-no longer appear as "н/д" when information is available.
+detects the actual form field names and search mode on the site to fill in the
+TNN and FSRAR ID so that results should appear correctly unless the site
+returns no data. The response parser has been improved to include all hidden
+form parameters and more flexibly extract the date, status and owner values, so
+these fields should no longer appear as "н/д" when information is available.

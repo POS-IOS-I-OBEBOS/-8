@@ -441,21 +441,36 @@ def extract_field(page: str, label: str) -> str | None:
 
 
 def find_field_name(html: str, part: str, default: str) -> str:
-    """Find the first input name containing the given part."""
+    """Return the first field name containing ``part`` if present."""
     m = re.search(rf'name="([^"]*{re.escape(part)}[^"]*)"', html, re.I)
     return m.group(1) if m else default
 
 
 def parse_form(html: str) -> dict:
-    """Return a dict of all input names and values from the form."""
-    inputs = re.findall(r"<input[^>]+>", html, re.I)
+    """Return a dict of form field names and values (inputs and selects)."""
     data: dict[str, str] = {}
-    for inp in inputs:
+    for inp in re.findall(r"<input[^>]+>", html, re.I):
         name_m = re.search(r'name="([^"]+)"', inp, re.I)
         if not name_m:
             continue
+        name = name_m.group(1)
         value_m = re.search(r'value="([^"]*)"', inp, re.I)
-        data[name_m.group(1)] = value_m.group(1) if value_m else ""
+        value = value_m.group(1) if value_m else ""
+        if re.search(r'type="radio"', inp, re.I):
+            if "checked" not in inp.lower():
+                continue
+        if re.search(r'type="checkbox"', inp, re.I):
+            if "checked" in inp.lower():
+                data[name] = value
+            continue
+        data[name] = value
+
+    for name, opts in re.findall(r'<select[^>]+name="([^"]+)"[^>]*>(.*?)</select>', html, re.I | re.S):
+        selected = re.search(r'<option[^>]+selected[^>]*value="([^"]*)"', opts, re.I)
+        if not selected:
+            selected = re.search(r'<option[^>]*value="([^"]*)"', opts, re.I)
+        if selected:
+            data[name] = selected.group(1)
     return data
 
 
@@ -471,11 +486,14 @@ def submit_invoice(tnn: str, fsrar: str, captcha: str, headers: dict, html: str)
         fsrar_field = find_field_name(html, "ClientId", "ClientId")
         cap_field = find_field_name(html, "Captcha", "Captcha")
         btn_field = find_field_name(html, "btn", "btnSend")
+        search_field = find_field_name(html, "Search", "")
 
         form = parse_form(html)
         form[reg_field] = tnn
         form[fsrar_field] = fsrar
         form[cap_field] = captcha
+        if search_field and search_field not in form:
+            form[search_field] = find_field_name(html, "RegId", "RegId")
         if btn_field in form and not form[btn_field]:
             form[btn_field] = ""  # value usually irrelevant
         if viewstate:
@@ -591,7 +609,10 @@ def handle_update(update: dict):
         session = invoice_sessions[user_id]
         stage = session.get("stage")
         if stage == "tnn":
-            session["tnn"] = text.strip()
+            tnn_val = text.strip()
+            if not tnn_val.startswith("TTN-"):
+                tnn_val = "TTN-" + tnn_val
+            session["tnn"] = tnn_val
             session["stage"] = "fsrar"
             send_message(chat_id, "Введите FSRAR ID получателя (например, 030000000000)")
         elif stage == "fsrar":
