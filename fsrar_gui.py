@@ -33,7 +33,8 @@ instance_id = ""
 def fetch_captcha(sess: requests.Session):
     logger.info("Получение капчи с %s", BASE_URL)
     logger.debug("GET %s", BASE_URL)
-    resp = sess.get(BASE_URL, verify=False)
+    headers = {"User-Agent": "Mozilla/5.0"}
+    resp = sess.get(BASE_URL, headers=headers, verify=False)
     logger.debug("Response status=%s", resp.status_code)
     try:
         with open("captcha_page.html", "w", encoding="utf-8") as fh:
@@ -63,9 +64,9 @@ def fetch_captcha(sess: requests.Session):
         cap_val = None
         inst_val = None
         img_val = None
-        cap_match = re.search(r"CaptchaId.*?value=['\"]([^'\"]+)", resp.text, re.I)
-        inst_match = re.search(r"InstanceId.*?value=['\"]([^'\"]+)", resp.text, re.I)
-        img_match = re.search(r"<img[^>]+src=['\"]([^'\"]+captcha[^'\"]*)", resp.text, re.I)
+        cap_match = re.search(r'(?:name|id)=["\']CaptchaId["\'][^>]*value=["\']([^"\']+)', resp.text, re.I)
+        inst_match = re.search(r'(?:name|id)=["\']InstanceId["\'][^>]*value=["\']([^"\']+)', resp.text, re.I)
+        img_match = re.search(r'<img[^>]+src=["\']([^"\']*captcha[^"\']*)', resp.text, re.I)
         if cap_match:
             cap_val = cap_match.group(1)
         if inst_match:
