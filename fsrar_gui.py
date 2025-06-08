@@ -59,9 +59,28 @@ def fetch_captcha(sess: requests.Session):
         or soup.find("img", {"class": re.compile("captcha", re.I)})
     )
     if not (cap_id_el and inst_id_el and img_el):
+        logger.warning("HTML parsing failed, trying regex search")
+        cap_val = None
+        inst_val = None
+        img_val = None
+        cap_match = re.search(r"CaptchaId.*?value=['\"]([^'\"]+)", resp.text, re.I)
+        inst_match = re.search(r"InstanceId.*?value=['\"]([^'\"]+)", resp.text, re.I)
+        img_match = re.search(r"<img[^>]+src=['\"]([^'\"]+captcha[^'\"]*)", resp.text, re.I)
+        if cap_match:
+            cap_val = cap_match.group(1)
+        if inst_match:
+            inst_val = inst_match.group(1)
+        if img_match:
+            img_val = urllib.parse.urljoin(BASE_URL, img_match.group(1))
+    else:
+        cap_val = cap_id_el.get("value")
+        inst_val = inst_id_el.get("value")
+        img_val = urllib.parse.urljoin(BASE_URL, img_el.get("src"))
+
+    if not (cap_val and inst_val and img_val):
         logger.error("Captcha elements not found")
         raise RuntimeError("Не удалось извлечь данные капчи")
-    return cap_id_el.get("value"), inst_id_el.get("value"), urllib.parse.urljoin(BASE_URL, img_el.get("src"))
+    return cap_val, inst_val, img_val
 
 
 def send_request(ttn: str, receiver: str, user_input: str):

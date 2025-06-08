@@ -62,12 +62,30 @@ def fetch_captcha(session: requests.Session):
     )
 
     if not (cap_id_el and inst_id_el and img_el):
+        logger.warning("HTML parsing failed, trying regex search")
+        cap_val = None
+        inst_val = None
+        captcha_url = None
+        cap_match = re.search(r"CaptchaId.*?value=['\"]([^'\"]+)", resp.text, re.I)
+        inst_match = re.search(r"InstanceId.*?value=['\"]([^'\"]+)", resp.text, re.I)
+        img_match = re.search(r"<img[^>]+src=['\"]([^'\"]+captcha[^'\"]*)", resp.text, re.I)
+        if cap_match:
+            cap_val = cap_match.group(1)
+        if inst_match:
+            inst_val = inst_match.group(1)
+        if img_match:
+            captcha_url = urllib.parse.urljoin(BASE_URL, img_match.group(1))
+    else:
+        cap_val = cap_id_el.get("value")
+        inst_val = inst_id_el.get("value")
+        captcha_url = urllib.parse.urljoin(BASE_URL, img_el.get("src"))
+
+    if not (cap_val and inst_val and captcha_url):
         logger.error("Captcha elements not found")
         raise RuntimeError("Не удалось извлечь данные капчи")
 
-    captcha_id = cap_id_el.get("value")
-    instance_id = inst_id_el.get("value")
-    captcha_url = urllib.parse.urljoin(BASE_URL, img_el.get("src"))
+    captcha_id = cap_val
+    instance_id = inst_val
     logger.info("Получены значения CaptchaId=%s InstanceId=%s", captcha_id, instance_id)
     return captcha_id, instance_id, captcha_url
 
