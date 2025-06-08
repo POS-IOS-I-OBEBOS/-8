@@ -421,33 +421,48 @@ def fetch_captcha() -> tuple[bytes, dict] | None:
         return None
 
 
+def extract_field(page: str, label: str) -> str | None:
+    """Return table cell value that follows the given label."""
+    pattern = rf"{label}.*?</td>\s*<td[^>]*>(.*?)</td>"
+    m = re.search(pattern, page, re.I | re.S)
+    if m:
+        return re.sub(r"\s+", " ", m.group(1)).strip()
+    return None
+
+
 def submit_invoice(tnn: str, fsrar: str, captcha: str, headers: dict, html: str) -> str | None:
     """Submit invoice data and parse result from FSRAR site."""
     url = "https://check1.fsrar.ru/?AspxAutoDetectCookieSupport=1"
     try:
         viewstate = re.search(r'name="__VIEWSTATE" value="([^"]+)"', html)
         eventvalidation = re.search(r'name="__EVENTVALIDATION" value="([^"]+)"', html)
+        viewgen = re.search(r'name="__VIEWSTATEGENERATOR" value="([^"]+)"', html)
         data = {
             "RegId": tnn,
             "ClientId": fsrar,
             "Captcha": captcha,
+            "btnSend": ""  # name of the submit button may be required
         }
         if viewstate:
             data["__VIEWSTATE"] = viewstate.group(1)
         if eventvalidation:
             data["__EVENTVALIDATION"] = eventvalidation.group(1)
+        if viewgen:
+            data["__VIEWSTATEGENERATOR"] = viewgen.group(1)
         data_encoded = urllib.parse.urlencode(data).encode()
-        req = urllib.request.Request(url, data=data_encoded, headers=headers)
+        req_headers = {"User-Agent": "Mozilla/5.0", "Content-Type": "application/x-www-form-urlencoded"}
+        req_headers.update(headers)
+        req = urllib.request.Request(url, data=data_encoded, headers=req_headers)
         with urllib.request.urlopen(req, context=UNVERIFIED_CONTEXT) as resp:
             page = resp.read().decode("utf-8", "ignore")
-        date = re.search(r"Последнего изменения</td>\s*<td[^>]*>([^<]+)", page)
-        status = re.search(r"Статус</td>\s*<td[^>]*>([^<]+)", page)
-        owner = re.search(r"Кому принадлежит</td>\s*<td[^>]*>([^<]+)", page)
+        date = extract_field(page, "изменения")
+        status = extract_field(page, "Статус")
+        owner = extract_field(page, "Кому принадлежит")
         return "\n".join(
             [
-                f"Дата и время последнего изменения: {date.group(1) if date else 'н/д'}",
-                f"Статус: {status.group(1) if status else 'н/д'}",
-                f"Кому принадлежит: {owner.group(1) if owner else 'н/д'}",
+                f"Дата и время последнего изменения: {date or 'н/д'}",
+                f"Статус: {status or 'н/д'}",
+                f"Кому принадлежит: {owner or 'н/д'}",
             ]
         )
     except Exception as exc:  # pragma: no cover - network errors

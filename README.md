@@ -42,3 +42,5 @@ user enters these values the bot shows a captcha from
 FSRAR service to respond and returns the date of the last change, the current
 status and the owner of the invoice. Certificate verification is disabled when
 contacting this site to avoid SSL errors.
+The response parsing has been improved so these fields correctly appear unless
+the site returns no data.
