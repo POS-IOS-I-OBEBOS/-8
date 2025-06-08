@@ -7,6 +7,14 @@ import ssl
 import re
 import matplotlib
 from pathlib import Path
+import io
+import tempfile
+from tkinter import scrolledtext, messagebox
+try:
+    from PIL import Image, ImageTk
+    PIL_AVAILABLE = True
+except Exception:  # pragma: no cover - optional dependency
+    PIL_AVAILABLE = False
 try:
     import psutil
     PSUTIL_AVAILABLE = True
@@ -18,7 +26,6 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import threading
 import tkinter as tk
-from tkinter import scrolledtext
 
 logging.basicConfig(
     level=logging.INFO,
@@ -121,6 +128,68 @@ def start_log_window() -> tk.Tk:
     text.pack(expand=True, fill="both")
     handler = TkLogHandler(text)
     logging.getLogger().addHandler(handler)
+
+    inv = tk.LabelFrame(window, text="FSRAR проверка")
+    inv.pack(fill="x", padx=5, pady=5)
+    tk.Label(inv, text="TNN").grid(row=0, column=0, sticky="e")
+    ent_tnn = tk.Entry(inv, width=20)
+    ent_tnn.grid(row=0, column=1, sticky="w")
+    tk.Label(inv, text="FSRAR ID").grid(row=1, column=0, sticky="e")
+    ent_fsrar = tk.Entry(inv, width=20)
+    ent_fsrar.grid(row=1, column=1, sticky="w")
+
+    def start_invoice():
+        tnn = ent_tnn.get().strip()
+        if not tnn:
+            messagebox.showerror("Ошибка", "Укажите номер ТТН")
+            return
+        if not tnn.startswith("TTN-"):
+            tnn = "TTN-" + tnn
+        fsrar = ent_fsrar.get().strip()
+        if not fsrar:
+            messagebox.showerror("Ошибка", "Укажите FSRAR ID")
+            return
+        cap = fetch_captcha()
+        if not cap:
+            messagebox.showerror("Ошибка", "Не удалось получить капчу")
+            return
+        image, headers, html = cap
+        cap_win = tk.Toplevel(window)
+        cap_win.title("Введите капчу")
+        if PIL_AVAILABLE:
+            img = Image.open(io.BytesIO(image))
+            photo = ImageTk.PhotoImage(img)
+            lbl = tk.Label(cap_win, image=photo)
+            lbl.image = photo
+            lbl.pack()
+        else:
+            tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".jpg")
+            tmp.write(image)
+            tmp.close()
+            tk.Label(cap_win, text=f"Капча сохранена в {tmp.name}").pack()
+        ent_cap = tk.Entry(cap_win)
+        ent_cap.pack()
+
+        def finish():
+            captcha = ent_cap.get().strip()
+            res = submit_invoice(tnn, fsrar, captcha, headers, html)
+            res_win = tk.Toplevel(window)
+            res_win.title("Результат проверки")
+            txt = scrolledtext.ScrolledText(res_win, width=80, height=20)
+            txt.pack(expand=True, fill="both")
+            txt.insert(tk.END, res or "Ошибка при проверке накладной")
+            if FSRAR_LOG.exists():
+                txt.insert(tk.END, "\n\n----- fsrar.log -----\n")
+                try:
+                    txt.insert(tk.END, FSRAR_LOG.read_text(encoding="utf-8"))
+                except Exception:
+                    txt.insert(tk.END, FSRAR_LOG.read_text())
+            txt.configure(state="disabled")
+            cap_win.destroy()
+
+        tk.Button(cap_win, text="Отправить", command=finish).pack()
+
+    tk.Button(inv, text="Запросить", command=start_invoice).grid(row=2, column=0, columnspan=2, pady=2)
 
     def color_from_percent(p: float) -> str:
         r = int(255 * p / 100)

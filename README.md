@@ -15,7 +15,11 @@ administrator IDs and channel IDs with invite links. Example values are shown in
 operations. The log window also shows real-time graphs for CPU and
 memory usage: bars fill from green to red as load increases. If an error
 occurs it is described in the log window along with a suggestion for how
-to fix it.
+to fix it. The bottom of the log window contains a small form for
+checking invoices on the FSRAR service: enter the TNN and FSRAR ID and
+press "Запросить". A captcha appears in a new window with a field for the
+text. After sending the captcha another window shows the invoice details
+and the contents of `fsrar.log`.
 
 ## Building an executable
 
