@@ -13,8 +13,9 @@ When starting, a graphical window will appear asking for the bot token,
 administrator IDs and channel IDs with invite links. Example values are shown in the fields. After pressing
 "Запустить" the bot starts and a separate log window displays all
 operations. The log window also shows real-time graphs for CPU and
-memory usage: bars fill from green to red as load increases. If an error
-occurs it is described in the log window along with a suggestion for how
+memory usage: bars fill from green to red as load increases. You can copy
+any text from this window or paste values using the standard clipboard
+shortcuts. If an error occurs it is described in the log window along with a suggestion for how
 to fix it. The bottom of the log window contains a small form for
 checking invoices on the FSRAR service: enter the TNN and FSRAR ID and
 press "Запросить". A captcha appears in a new window with a field for the
@@ -39,8 +40,8 @@ administrators view or edit channel links, change the welcome message,
 see basic statistics and request a visit chart in JPG format. Authorised
 users also have access to the **Проверка накладной** button.
 
-When pressed, the bot first asks for the TNN number (for example `123456789`),
-which is automatically prefixed with `TTN-`. It then requests the recipient's
+When pressed, the bot first asks for the TNN number (for example `123456789`).
+It then requests the recipient's
 FSRAR ID (for example `030000000000`). After the
 user enters these values the bot shows a captcha from
 <https://check1.fsrar.ru>. Once the captcha text is sent, the bot waits for the

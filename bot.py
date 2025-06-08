@@ -99,12 +99,18 @@ class TkLogHandler(logging.Handler):
         msg = self.format(record)
 
         def append():
-            self.widget.configure(state="normal")
             self.widget.insert(tk.END, msg + "\n")
-            self.widget.configure(state="disabled")
             self.widget.yview(tk.END)
 
         self.widget.after(0, append)
+
+
+def enable_copy_paste(widget: tk.Widget):
+    """Allow copying and pasting via context menu."""
+    menu = tk.Menu(widget, tearoff=0)
+    menu.add_command(label="Копировать", command=lambda: widget.event_generate("<<Copy>>"))
+    menu.add_command(label="Вставить", command=lambda: widget.event_generate("<<Paste>>"))
+    widget.bind("<Button-3>", lambda e: menu.tk_popup(e.x_root, e.y_root))
 
 
 def start_log_window() -> tk.Tk:
@@ -125,8 +131,10 @@ def start_log_window() -> tk.Tk:
     mem_canvas = tk.Canvas(frame, width=200, height=20)
     mem_canvas.grid(row=1, column=1, padx=5, pady=(0, 5))
 
-    text = scrolledtext.ScrolledText(window, width=80, height=20, state="disabled")
+    text = scrolledtext.ScrolledText(window, width=80, height=20)
     text.pack(expand=True, fill="both")
+    text.bind("<Key>", lambda e: "break")  # prevent edits but allow selection
+    enable_copy_paste(text)
     handler = TkLogHandler(text)
     logging.getLogger().addHandler(handler)
 
@@ -135,17 +143,17 @@ def start_log_window() -> tk.Tk:
     tk.Label(inv, text="TNN").grid(row=0, column=0, sticky="e")
     ent_tnn = tk.Entry(inv, width=20)
     ent_tnn.grid(row=0, column=1, sticky="w")
+    enable_copy_paste(ent_tnn)
     tk.Label(inv, text="FSRAR ID").grid(row=1, column=0, sticky="e")
     ent_fsrar = tk.Entry(inv, width=20)
     ent_fsrar.grid(row=1, column=1, sticky="w")
+    enable_copy_paste(ent_fsrar)
 
     def start_invoice():
         tnn = ent_tnn.get().strip()
         if not tnn:
             messagebox.showerror("Ошибка", "Укажите номер ТТН")
             return
-        if not tnn.startswith("TTN-"):
-            tnn = "TTN-" + tnn
         fsrar = ent_fsrar.get().strip()
         if not fsrar:
             messagebox.showerror("Ошибка", "Укажите FSRAR ID")
@@ -170,6 +178,7 @@ def start_log_window() -> tk.Tk:
             tk.Label(cap_win, text=f"Капча сохранена в {tmp.name}").pack()
         ent_cap = tk.Entry(cap_win)
         ent_cap.pack()
+        enable_copy_paste(ent_cap)
 
         def finish():
             captcha = ent_cap.get().strip()
@@ -178,14 +187,15 @@ def start_log_window() -> tk.Tk:
             res_win.title("Результат проверки")
             txt = scrolledtext.ScrolledText(res_win, width=80, height=20)
             txt.pack(expand=True, fill="both")
+            txt.bind("<Key>", lambda e: "break")
             txt.insert(tk.END, res or "Ошибка при проверке накладной")
+            enable_copy_paste(txt)
             if FSRAR_LOG.exists():
                 txt.insert(tk.END, "\n\n----- fsrar.log -----\n")
                 try:
                     txt.insert(tk.END, FSRAR_LOG.read_text(encoding="utf-8"))
                 except Exception:
                     txt.insert(tk.END, FSRAR_LOG.read_text())
-            txt.configure(state="disabled")
             cap_win.destroy()
 
         tk.Button(cap_win, text="Отправить", command=finish).pack()
@@ -734,10 +744,7 @@ def handle_update(update: dict):
         session = invoice_sessions[user_id]
         stage = session.get("stage")
         if stage == "tnn":
-            tnn_val = text.strip()
-            if not tnn_val.startswith("TTN-"):
-                tnn_val = "TTN-" + tnn_val
-            session["tnn"] = tnn_val
+            session["tnn"] = text.strip()
             session["stage"] = "fsrar"
             send_message(chat_id, "Введите FSRAR ID получателя (например, 030000000000)")
         elif stage == "fsrar":
