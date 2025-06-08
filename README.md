@@ -52,4 +52,5 @@ detects the actual form field names and search mode on the site, ensuring the
 query succeeds even if these names change. Pages are decoded using the
 `windows-1251` encoding reported by the server, so Russian text is parsed
 correctly. The bot writes all request and response details to `fsrar.log` so
-invoice problems can be diagnosed.
+invoice problems can be diagnosed. HTML entities on the page are decoded so
+Russian characters display correctly in the bot messages.

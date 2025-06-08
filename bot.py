@@ -5,6 +5,7 @@ import urllib.parse
 import urllib.request
 import ssl
 import re
+import html
 import matplotlib
 from pathlib import Path
 import io
@@ -512,13 +513,15 @@ def extract_field(page: str, label: str) -> str | None:
     )
     m = pattern.search(page)
     if m:
-        return re.sub(r"\s+", " ", m.group(1)).strip()
+        val = re.sub(r"\s+", " ", m.group(1)).strip()
+        return html.unescape(val)
 
     # Fallback: label followed by colon and text
     pattern = re.compile(rf"{re.escape(label)}[^:<]*[:>]\s*([^<]+)", re.I | re.S)
     m = pattern.search(page)
     if m:
-        return re.sub(r"\s+", " ", m.group(1)).strip()
+        val = re.sub(r"\s+", " ", m.group(1)).strip()
+        return html.unescape(val)
     return None
 
 
@@ -624,6 +627,8 @@ def submit_invoice(tnn: str, fsrar: str, captcha: str, headers: dict, html: str)
                 val = re.sub(r"<[^>]+>", "", val)
                 lbl = re.sub(r"\s+", " ", lbl).strip()
                 val = re.sub(r"\s+", " ", val).strip()
+                lbl = html.unescape(lbl)
+                val = html.unescape(val)
                 lines.append(f"{lbl}: {val}")
             return "\n".join(lines)
         parts = []
