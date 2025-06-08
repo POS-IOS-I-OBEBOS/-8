@@ -3,6 +3,7 @@ import logging
 import requests
 from bs4 import BeautifulSoup
 import urllib.parse
+import re
 
 requests.packages.urllib3.disable_warnings()
 
@@ -33,12 +34,32 @@ def fetch_captcha(session: requests.Session):
     resp = session.get(BASE_URL, verify=False)
     logger.debug("Response status=%s", resp.status_code)
     logger.debug("Response html: %s", resp.text[:200])
+    try:
+        with open("captcha_page.html", "w", encoding="utf-8") as fh:
+            fh.write(resp.text)
+        logger.debug("Captcha page saved to captcha_page.html")
+    except Exception:
+        logger.exception("Failed to save captcha page")
     resp.raise_for_status()
     soup = BeautifulSoup(resp.text, "html.parser")
 
-    cap_id_el = soup.find("input", {"name": "CaptchaId"})
-    inst_id_el = soup.find("input", {"name": "InstanceId"})
-    img_el = soup.find("img", {"id": "captcha"})
+    # try several attribute combinations as the exact ids can change
+    cap_id_el = (
+        soup.find("input", {"name": "CaptchaId"})
+        or soup.find("input", {"id": "CaptchaId"})
+        or soup.find("input", {"name": re.compile("captcha", re.I)})
+        or soup.find("input", {"id": re.compile("captcha", re.I)})
+    )
+    inst_id_el = (
+        soup.find("input", {"name": "InstanceId"})
+        or soup.find("input", {"id": "InstanceId"})
+        or soup.find("input", {"name": re.compile("instance", re.I)})
+        or soup.find("input", {"id": re.compile("instance", re.I)})
+    )
+    img_el = (
+        soup.find("img", {"id": re.compile("captcha", re.I)})
+        or soup.find("img", {"class": re.compile("captcha", re.I)})
+    )
 
     if not (cap_id_el and inst_id_el and img_el):
         logger.error("Captcha elements not found")
