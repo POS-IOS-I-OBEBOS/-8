@@ -43,4 +43,7 @@ FSRAR service to respond and returns the date of the last change, the current
 status and the owner of the invoice. Certificate verification is disabled when
 contacting this site to avoid SSL errors. The invoice submission automatically
 detects the actual form field names on the site to fill in the TNN and FSRAR ID
-so that results should appear correctly unless the site returns no data.
+so that results should appear correctly unless the site returns no data. The
+response parser has been improved to include all hidden form parameters and
+more flexibly extract the date, status and owner values, so these fields should
+no longer appear as "н/д" when information is available.

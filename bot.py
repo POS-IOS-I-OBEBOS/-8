@@ -422,11 +422,18 @@ def fetch_captcha() -> tuple[bytes, dict] | None:
 
 
 def extract_field(page: str, label: str) -> str | None:
-    """Return table cell value that follows the given label."""
+    """Return value that follows the given label on the results page."""
+    # Table-based layout
     pattern = re.compile(
         rf"<td[^>]*>\s*{re.escape(label)}\s*</td>\s*<td[^>]*>(.*?)</td>",
         re.I | re.S,
     )
+    m = pattern.search(page)
+    if m:
+        return re.sub(r"\s+", " ", m.group(1)).strip()
+
+    # Fallback: label followed by colon and text
+    pattern = re.compile(rf"{re.escape(label)}[^:<]*[:>]\s*([^<]+)", re.I | re.S)
     m = pattern.search(page)
     if m:
         return re.sub(r"\s+", " ", m.group(1)).strip()
@@ -437,6 +444,19 @@ def find_field_name(html: str, part: str, default: str) -> str:
     """Find the first input name containing the given part."""
     m = re.search(rf'name="([^"]*{re.escape(part)}[^"]*)"', html, re.I)
     return m.group(1) if m else default
+
+
+def parse_form(html: str) -> dict:
+    """Return a dict of all input names and values from the form."""
+    inputs = re.findall(r"<input[^>]+>", html, re.I)
+    data: dict[str, str] = {}
+    for inp in inputs:
+        name_m = re.search(r'name="([^"]+)"', inp, re.I)
+        if not name_m:
+            continue
+        value_m = re.search(r'value="([^"]*)"', inp, re.I)
+        data[name_m.group(1)] = value_m.group(1) if value_m else ""
+    return data
 
 
 def submit_invoice(tnn: str, fsrar: str, captcha: str, headers: dict, html: str) -> str | None:
@@ -452,19 +472,19 @@ def submit_invoice(tnn: str, fsrar: str, captcha: str, headers: dict, html: str)
         cap_field = find_field_name(html, "Captcha", "Captcha")
         btn_field = find_field_name(html, "btn", "btnSend")
 
-        data = {
-            reg_field: tnn,
-            fsrar_field: fsrar,
-            cap_field: captcha,
-            btn_field: "",
-        }
+        form = parse_form(html)
+        form[reg_field] = tnn
+        form[fsrar_field] = fsrar
+        form[cap_field] = captcha
+        if btn_field in form and not form[btn_field]:
+            form[btn_field] = ""  # value usually irrelevant
         if viewstate:
-            data["__VIEWSTATE"] = viewstate.group(1)
+            form["__VIEWSTATE"] = viewstate.group(1)
         if eventvalidation:
-            data["__EVENTVALIDATION"] = eventvalidation.group(1)
+            form["__EVENTVALIDATION"] = eventvalidation.group(1)
         if viewgen:
-            data["__VIEWSTATEGENERATOR"] = viewgen.group(1)
-        data_encoded = urllib.parse.urlencode(data).encode()
+            form["__VIEWSTATEGENERATOR"] = viewgen.group(1)
+        data_encoded = urllib.parse.urlencode(form).encode()
         req_headers = {"User-Agent": "Mozilla/5.0", "Content-Type": "application/x-www-form-urlencoded"}
         req_headers.update(headers)
         req = urllib.request.Request(url, data=data_encoded, headers=req_headers)
