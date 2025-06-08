@@ -6,11 +6,21 @@ import urllib.parse
 
 requests.packages.urllib3.disable_warnings()
 
-logging.basicConfig(
-    filename="fsrar_cli.log",
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(message)s",
-)
+logger = logging.getLogger("fsrar_cli")
+logger.setLevel(logging.DEBUG)
+
+_formatter = logging.Formatter("%(asctime)s [%(levelname)s] %(message)s")
+
+_file_handler = logging.FileHandler("fsrar_cli.log", encoding="utf-8")
+_file_handler.setLevel(logging.DEBUG)
+_file_handler.setFormatter(_formatter)
+
+_stream_handler = logging.StreamHandler()
+_stream_handler.setLevel(logging.INFO)
+_stream_handler.setFormatter(_formatter)
+
+logger.addHandler(_file_handler)
+logger.addHandler(_stream_handler)
 
 BASE_URL = "https://check1.fsrar.ru/"
 API_URL = urllib.parse.urljoin(BASE_URL, "MobileApi/transportwb")
@@ -18,8 +28,11 @@ API_URL = urllib.parse.urljoin(BASE_URL, "MobileApi/transportwb")
 
 def fetch_captcha(session: requests.Session):
     """Return CaptchaId, InstanceId and captcha image URL."""
-    logging.info("Получение капчи с %s", BASE_URL)
+    logger.info("Получение капчи с %s", BASE_URL)
+    logger.debug("GET %s", BASE_URL)
     resp = session.get(BASE_URL, verify=False)
+    logger.debug("Response status=%s", resp.status_code)
+    logger.debug("Response html: %s", resp.text[:200])
     resp.raise_for_status()
     soup = BeautifulSoup(resp.text, "html.parser")
 
@@ -28,24 +41,25 @@ def fetch_captcha(session: requests.Session):
     img_el = soup.find("img", {"id": "captcha"})
 
     if not (cap_id_el and inst_id_el and img_el):
+        logger.error("Captcha elements not found")
         raise RuntimeError("Не удалось извлечь данные капчи")
 
     captcha_id = cap_id_el.get("value")
     instance_id = inst_id_el.get("value")
     captcha_url = urllib.parse.urljoin(BASE_URL, img_el.get("src"))
-    logging.info("Получены значения CaptchaId=%s InstanceId=%s", captcha_id, instance_id)
+    logger.info("Получены значения CaptchaId=%s InstanceId=%s", captcha_id, instance_id)
     return captcha_id, instance_id, captcha_url
 
 
 def check_document(ttn: str, receiver: str):
-    logging.info("Проверка документа. ТТН=%s, ФСРАР=%s", ttn, receiver)
+    logger.info("Проверка документа. ТТН=%s, ФСРАР=%s", ttn, receiver)
     session = requests.Session()
     captcha_id, instance_id, captcha_url = fetch_captcha(session)
 
     print("Откройте изображение капчи по ссылке:", captcha_url)
-    logging.info("URL капчи: %s", captcha_url)
+    logger.info("URL капчи: %s", captcha_url)
     user_input = input("Введите капчу: ").strip()
-    logging.info("Введена капча: %s", user_input)
+    logger.info("Введена капча: %s", user_input)
 
     payload = {
         "id": ttn,
@@ -55,7 +69,7 @@ def check_document(ttn: str, receiver: str):
         "InstanceId": instance_id,
         "UserInput": user_input,
     }
-    logging.info("Формирование запроса: %s", payload)
+    logger.debug("Формирование запроса: %s", payload)
     headers = {
         "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
         "X-Requested-With": "XMLHttpRequest",
@@ -63,25 +77,29 @@ def check_document(ttn: str, receiver: str):
         "Referer": BASE_URL,
     }
 
-    logging.info("Отправка POST-запроса")
+    logger.info("Отправка POST-запроса")
+    logger.debug("Headers: %s", headers)
 
+    logger.debug("POST %s", API_URL)
     resp = session.post(API_URL, data=payload, headers=headers, verify=False)
+    logger.debug("Response status=%s", resp.status_code)
+    logger.debug("Response text: %s", resp.text[:200])
     resp.raise_for_status()
-    logging.info("Ответ status=%s", resp.status_code)
+    logger.info("Ответ status=%s", resp.status_code)
     try:
         data = resp.json()
     except Exception:
-        logging.error("Некорректный ответ: %s", resp.text)
+        logger.exception("Некорректный ответ")
         print("Некорректный ответ:")
         print(resp.text)
         return
-    logging.info("Ответ от сервера: %s", data)
+    logger.info("Ответ от сервера: %s", data)
     print("Ответ от сервера:")
     print(json.dumps(data, ensure_ascii=False, indent=2))
 
 
 if __name__ == "__main__":
-    logging.info("Запуск утилиты")
+    logger.info("Запуск утилиты")
     ttn = input("Введите номер ТТН: ").strip()
     receiver = input("Введите ФСРАР ID получателя: ").strip()
     check_document(ttn, receiver)
