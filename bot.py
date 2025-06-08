@@ -3,6 +3,8 @@ import logging
 import time
 import urllib.parse
 import urllib.request
+import ssl
+import re
 import matplotlib
 try:
     import psutil
@@ -21,6 +23,8 @@ logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(message)s",
 )
+
+UNVERIFIED_CONTEXT = ssl._create_unverified_context()
 from pathlib import Path
 
 # These will be populated at startup by asking the user for input
@@ -401,7 +405,7 @@ def fetch_captcha() -> tuple[bytes, dict] | None:
     url = "https://check1.fsrar.ru/?AspxAutoDetectCookieSupport=1"
     try:
         req = urllib.request.Request(url)
-        with urllib.request.urlopen(req) as resp:
+        with urllib.request.urlopen(req, context=UNVERIFIED_CONTEXT) as resp:
             cookies = resp.headers.get_all("Set-Cookie") or []
             html = resp.read().decode("utf-8", "ignore")
         match = re.search(r'<img[^>]+src="([^"]*captcha[^\"]*)"', html, re.I)
@@ -409,7 +413,7 @@ def fetch_captcha() -> tuple[bytes, dict] | None:
             return None
         cap_url = urllib.parse.urljoin(url, match.group(1))
         req2 = urllib.request.Request(cap_url, headers={"Cookie": "; ".join(cookies)})
-        with urllib.request.urlopen(req2) as resp2:
+        with urllib.request.urlopen(req2, context=UNVERIFIED_CONTEXT) as resp2:
             image = resp2.read()
         return image, {"Cookie": "; ".join(cookies)}, html
     except Exception as exc:  # pragma: no cover - network errors
@@ -434,7 +438,7 @@ def submit_invoice(tnn: str, fsrar: str, captcha: str, headers: dict, html: str)
             data["__EVENTVALIDATION"] = eventvalidation.group(1)
         data_encoded = urllib.parse.urlencode(data).encode()
         req = urllib.request.Request(url, data=data_encoded, headers=headers)
-        with urllib.request.urlopen(req) as resp:
+        with urllib.request.urlopen(req, context=UNVERIFIED_CONTEXT) as resp:
             page = resp.read().decode("utf-8", "ignore")
         date = re.search(r"Последнего изменения</td>\s*<td[^>]*>([^<]+)", page)
         status = re.search(r"Статус</td>\s*<td[^>]*>([^<]+)", page)

@@ -35,4 +35,5 @@ administrators view or edit channel links, change the welcome message,
 see basic statistics and request a visit chart in JPG format. Authorised
 users also have access to the **Проверка накладной** button which asks for
 a TNN number and FSRAR ID, shows a captcha from https://check1.fsrar.ru and
-returns the latest status information for that invoice.
+returns the latest status information for that invoice. Certificate
+verification is disabled when contacting this site to avoid SSL errors.
