@@ -154,6 +154,8 @@ def start_log_window() -> tk.Tk:
         if not tnn:
             messagebox.showerror("Ошибка", "Укажите номер ТТН")
             return
+        if not tnn.upper().startswith("TTN-"):
+            tnn = "TTN-" + tnn
         fsrar = ent_fsrar.get().strip()
         if not fsrar:
             messagebox.showerror("Ошибка", "Укажите FSRAR ID")
@@ -554,6 +556,18 @@ def find_captcha_input(html: str) -> str:
     return find_field_name(html, "CaptchaCode", "CaptchaCode")
 
 
+def find_fsrar_checkbox(html: str) -> str | None:
+    """Return the checkbox name enabling the FSRAR ID field, if any."""
+    for inp in re.findall(r"<input[^>]+>", html, re.I):
+        if "checkbox" not in inp.lower():
+            continue
+        if "fsrar" in inp.lower() or "client" in inp.lower():
+            m = re.search(r'name="([^"]+)"', inp, re.I)
+            if m:
+                return m.group(1)
+    return None
+
+
 def parse_form(html: str) -> dict:
     """Return a dict of form field names and values (inputs and selects)."""
     data: dict[str, str] = {}
@@ -600,8 +614,11 @@ def submit_invoice(tnn: str, fsrar: str, captcha: str, headers: dict, html: str)
         form[reg_field] = tnn
         form[fsrar_field] = fsrar
         form[cap_field] = captcha
-        if search_field and search_field not in form:
-            form[search_field] = find_field_name(html, "RegId", "RegId")
+        fsrar_chk = find_fsrar_checkbox(html)
+        if fsrar_chk:
+            form[fsrar_chk] = form.get(fsrar_chk, "on") or "on"
+        if search_field:
+            form[search_field] = reg_field
         if btn_field in form and not form[btn_field]:
             form[btn_field] = ""  # value usually irrelevant
         if viewstate:
@@ -744,7 +761,10 @@ def handle_update(update: dict):
         session = invoice_sessions[user_id]
         stage = session.get("stage")
         if stage == "tnn":
-            session["tnn"] = text.strip()
+            tnn = text.strip()
+            if not tnn.upper().startswith("TTN-"):
+                tnn = "TTN-" + tnn
+            session["tnn"] = tnn
             session["stage"] = "fsrar"
             send_message(chat_id, "Введите FSRAR ID получателя (например, 030000000000)")
         elif stage == "fsrar":

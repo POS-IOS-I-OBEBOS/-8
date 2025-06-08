@@ -41,8 +41,10 @@ see basic statistics and request a visit chart in JPG format. Authorised
 users also have access to the **Проверка накладной** button.
 
 When pressed, the bot first asks for the TNN number (for example `123456789`).
-It then requests the recipient's
-FSRAR ID (for example `030000000000`). After the
+The bot will prepend `TTN-` to this value and select the search mode
+"Поиск по Идентификатору накладной" automatically. It then requests the recipient's
+FSRAR ID (for example `030000000000`). The bot turns on the option "fsrar ID получателя"
+when submitting the form. After the
 user enters these values the bot shows a captcha from
 <https://check1.fsrar.ru>. Once the captcha text is sent, the bot waits for the
 FSRAR service to respond and returns every field from the results table. Each
