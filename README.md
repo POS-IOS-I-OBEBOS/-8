@@ -40,7 +40,7 @@ administrators view or edit channel links, change the welcome message,
 see basic statistics and request a visit chart in JPG format. Authorised
 users also have access to the **Проверка накладной** button.
 
-When pressed, the bot first asks for the TNN number (for example `TTN-0817882993`).
+When pressed, the bot first asks for the TNN number (for example `0817882993`).
 The entered value is sent as is and the bot selects the search mode
 "Поиск по Идентификатору накладной" automatically. It then requests the recipient's
 FSRAR ID (for example `030000000000`). The bot turns on the option "fsrar ID получателя"

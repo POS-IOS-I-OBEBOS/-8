@@ -536,9 +536,24 @@ def extract_field(page: str, label: str) -> str | None:
 
 
 def find_field_name(html: str, part: str, default: str) -> str:
-    """Return the first field name containing ``part`` if present."""
-    m = re.search(rf'name="([^"]*{re.escape(part)}[^"]*)"', html, re.I)
-    return m.group(1) if m else default
+    """Return the best matching field name for ``part``."""
+    names = re.findall(r'name="([^"]+)"', html, re.I)
+    part_low = part.lower()
+    for name in names:
+        if part_low in name.lower():
+            return name
+    # additional heuristics for known fields
+    if part_low == "regid":
+        synonyms = ["wbregid", "id", "owner_id"]
+    elif part_low == "clientid":
+        synonyms = ["owner_receiver", "fsrar", "client"]
+    else:
+        synonyms = []
+    for syn in synonyms:
+        for name in names:
+            if syn.lower() in name.lower():
+                return name
+    return default
 
 
 def find_captcha_input(html: str) -> str:
