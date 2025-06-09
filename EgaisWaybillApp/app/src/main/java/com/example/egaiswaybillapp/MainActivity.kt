@@ -26,15 +26,24 @@ class MainActivity : AppCompatActivity() {
         btnQuery.setOnClickListener {
             val ttn = etTtn.text.toString().trim()
             if (ttn.isNotEmpty()) {
+                if (!isEgaisProviderAvailable()) {
+                    tvResult.text = getString(R.string.provider_not_found)
+                    return@setOnClickListener
+                }
+
                 val executor = WayBillQuery().number.equal(ttn)
                 val result = StringBuilder()
-                executor.execute(this)?.use { cursor ->
-                    while (cursor.moveToNext()) {
-                        val wb: WayBill = cursor.getValue()
-                        result.append(wb.toString()).append("\n")
+                try {
+                    executor.execute(this)?.use { cursor ->
+                        while (cursor.moveToNext()) {
+                            val wb: WayBill = cursor.getValue()
+                            result.append(wb.toString()).append("\n")
+                        }
                     }
+                } catch (e: Exception) {
+                    result.append(getString(R.string.query_failed, e.message))
                 }
-                if (result.isEmpty()) result.append("Не найдено")
+                if (result.isEmpty()) result.append(getString(R.string.not_found))
                 tvResult.text = result.toString()
             }
         }
@@ -52,5 +61,12 @@ class MainActivity : AppCompatActivity() {
                 }
                 .show()
         }
+    }
+
+    private fun isEgaisProviderAvailable(): Boolean {
+        return packageManager.resolveContentProvider(
+            "ru.evotor.egais.api.waybill",
+            0
+        ) != null
     }
 }

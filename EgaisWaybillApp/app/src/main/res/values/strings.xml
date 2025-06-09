@@ -3,4 +3,7 @@
     <string name="enter_ttn">Введите номер ТТН</string>
     <string name="query">Запросить</string>
     <string name="enter_uuid">Введите app_uuid</string>
+    <string name="provider_not_found">Контент-провайдер ЕГАИС недоступен</string>
+    <string name="query_failed">Ошибка запроса: %1$s</string>
+    <string name="not_found">Не найдено</string>
 </resources>
