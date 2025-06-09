@@ -1,0 +1,5 @@
+2025-06-09 20:00:00 [INFO] kitchen_gen_bot.main: Token received
+2025-06-09 20:00:00 [INFO] kitchen_gen_bot.main: Starting polling
+2025-06-09 20:00:05 [INFO] kitchen_gen_bot.bot.handlers: /start by 123456789
+2025-06-09 20:00:07 [INFO] kitchen_gen_bot.bot.handlers: Status color #FF0000 for user 123456789
+...
