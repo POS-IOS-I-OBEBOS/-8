@@ -4,10 +4,16 @@ import sys
 import json
 import xml.etree.ElementTree as ET
 
-from aiogram import Bot, Dispatcher, executor, types
-from aiogram.dispatcher import FSMContext
-from aiogram.dispatcher.filters.state import State, StatesGroup
-from aiogram.contrib.fsm_storage.memory import MemoryStorage
+try:
+    from aiogram import Bot, Dispatcher, executor, types
+    from aiogram.dispatcher import FSMContext
+    from aiogram.dispatcher.filters.state import State, StatesGroup
+    from aiogram.contrib.fsm_storage.memory import MemoryStorage
+except ModuleNotFoundError as exc:  # pragma: no cover - runtime import check
+    print(
+        "aiogram is not installed. Please run `pip install -r requirements.txt`"
+    )
+    raise
 
 # Determine base directory depending on whether the app is bundled by
 # PyInstaller or run from sources.
