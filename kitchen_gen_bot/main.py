@@ -2,7 +2,7 @@ import asyncio
 import logging
 from aiogram import Bot, Dispatcher
 
-from bot.handlers import router
+from kitchen_gen_bot.bot.handlers import router
 
 
 logger = logging.getLogger(__name__)
