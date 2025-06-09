@@ -26,11 +26,9 @@ class MainActivity : AppCompatActivity() {
         btnQuery.setOnClickListener {
             val ttn = etTtn.text.toString().trim()
             if (ttn.isNotEmpty()) {
-                val query = WayBillQuery().apply {
-                    number.equalTo(ttn)
-                }
+                val executor = WayBillQuery().number.equal(ttn)
                 val result = StringBuilder()
-                query.execute(this)?.use { cursor ->
+                executor.execute(this)?.use { cursor ->
                     while (cursor.moveToNext()) {
                         val wb: WayBill = cursor.getValue()
                         result.append(wb.toString()).append("\n")
