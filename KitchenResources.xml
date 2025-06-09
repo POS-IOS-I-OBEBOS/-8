@@ -1,0 +1,38 @@
+<KitchenResources>
+    <xsd:schema xmlns:xsd="http://www.w3.org/2001/XMLSchema">
+        <!--  Atom Types Begin  -->
+        <xsd:simpleType name="NamedColor">
+            <xsd:restriction base="xsd:string">
+                <xsd:enumeration value="Black"/>
+                <xsd:enumeration value="White"/>
+                <xsd:enumeration value="Red"/>
+                <xsd:enumeration value="Green"/>
+                <xsd:enumeration value="Blue"/>
+                <!-- ... many more ... -->
+            </xsd:restriction>
+        </xsd:simpleType>
+    </xsd:schema>
+    <!--  Color Definitions Begin  -->
+    <ColorDefinition Name="Black" Color="#303030"/>
+    <ColorDefinition Name="White" Color="#F2F2F2"/>
+    <ColorDefinition Name="Red" Color="#DD2525"/>
+    <ColorDefinition Name="Green" Color="#3A9F49"/>
+    <ColorDefinition Name="Blue" Color="#266B9B"/>
+    <!-- ... many more color definitions ... -->
+    <!--  Panel Styles Begin  -->
+    <PanelStyle Name="WhitePanel" BackgroundColor="White" BorderColor="White" BorderThickness="None"/>
+    <PanelStyle Name="RedPanel" BackgroundColor="Red" BorderColor="Red" BorderThickness="None"/>
+    <PanelStyle Name="BluePanel" BackgroundColor="Blue" BorderColor="Blue" BorderThickness="None"/>
+    <!-- ... many more panel styles ... -->
+    <StatusDependentPanel Name="ItemsGroup">
+        <InProgress Name="Queued" NormalStyle="WhitePanel" VipStyle="WhitePanel" SoftOverdueStyle="WhitePanel" HardOverdueStyle="WhitePanel"/>
+        <Completed Name="Served" Style="WhitePanel"/>
+        <Completed Name="Cancelled" Style="WhitePanel"/>
+    </StatusDependentPanel>
+    <StatusDependentText Name="ProductItemName">
+        <InProgress Name="CookingStarted" NormalStyle="ProductItemName" VipStyle="ProductItemName"/>
+        <Completed Name="Served" Style="ProductItemName"/>
+        <Completed Name="Cancelled" Style="ProductItemName"/>
+    </StatusDependentText>
+    <!-- ... many more definitions ... -->
+</KitchenResources>
