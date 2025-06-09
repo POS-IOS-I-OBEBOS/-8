@@ -1,10 +1,16 @@
 from __future__ import annotations
 import os
 import uuid
+import logging
 from xml.etree.ElementTree import Element, SubElement, ElementTree
 
 
+logger = logging.getLogger(__name__)
+
+
 def generate_xml(data: dict) -> str:
+    logger.info("Generating XML")
+    logger.debug("Data: %s", data)
     root = Element("KitchenResources")
 
     statuses_el = SubElement(root, "Statuses")
@@ -31,4 +37,5 @@ def generate_xml(data: dict) -> str:
     filename = f"KitchenResources_{uuid.uuid4().hex}.xml"
     path = os.path.join("kitchen_gen_bot/data/output", filename)
     tree.write(path, encoding="utf-8", xml_declaration=True)
+    logger.info("XML saved to %s", path)
     return path
