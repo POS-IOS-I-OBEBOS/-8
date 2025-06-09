@@ -1,5 +1,7 @@
 import logging
 import os
+import sys
+import json
 import xml.etree.ElementTree as ET
 
 from aiogram import Bot, Dispatcher, executor, types
@@ -7,19 +9,51 @@ from aiogram.dispatcher import FSMContext
 from aiogram.dispatcher.filters.state import State, StatesGroup
 from aiogram.contrib.fsm_storage.memory import MemoryStorage
 
-# Load token from environment
-TOKEN = os.getenv("BOT_TOKEN")
-if not TOKEN:
-    raise RuntimeError("BOT_TOKEN environment variable not set")
+# Determine base directory depending on whether the app is bundled by
+# PyInstaller or run from sources.
+if getattr(sys, "frozen", False):
+    BASE_DIR = os.path.dirname(sys.executable)
+else:
+    BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
-# Paths
-XML_PATH = "KitchenResources.xml"
+CONFIG_PATH = os.path.join(BASE_DIR, "config.json")
+XML_PATH = os.path.join(BASE_DIR, "KitchenResources.xml")
+
+
+def load_token() -> str:
+    """Load token from config or environment, prompting the user if needed."""
+    # First try the config file
+    if os.path.exists(CONFIG_PATH):
+        try:
+            with open(CONFIG_PATH, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                token = data.get("BOT_TOKEN")
+                if token:
+                    return token
+        except Exception:
+            pass
+
+    # Next, try environment variable
+    token = os.getenv("BOT_TOKEN")
+    if not token:
+        # Ask the user for token interactively on first launch
+        token = input("Enter Telegram bot token: ").strip()
+
+    # Save token for future runs
+    try:
+        with open(CONFIG_PATH, "w", encoding="utf-8") as f:
+            json.dump({"BOT_TOKEN": token}, f)
+    except Exception as exc:
+        logger.error("Failed to save config: %s", exc)
+
+    return token
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # Initialize bot and dispatcher
+TOKEN = load_token()
 bot = Bot(token=TOKEN)
 storage = MemoryStorage()
 dp = Dispatcher(bot, storage=storage)
