@@ -15,12 +15,9 @@ except ModuleNotFoundError as exc:  # pragma: no cover - runtime import check
     )
     raise
 
-# Determine base directory depending on whether the app is bundled by
-# PyInstaller or run from sources.
-if getattr(sys, "frozen", False):
-    BASE_DIR = os.path.dirname(sys.executable)
-else:
-    BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+# Determine base directory. The script is expected to run directly from
+# sources, so we simply use the location of this file.
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 CONFIG_PATH = os.path.join(BASE_DIR, "config.json")
 XML_PATH = os.path.join(BASE_DIR, "KitchenResources.xml")
